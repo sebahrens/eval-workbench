@@ -485,8 +485,7 @@ rate reconciliation explains the difference between statutory and effective rate
 **Input Files**:
 - `k1s/` folder containing 8 K-1 PDFs:
   - 3 system-generated (clean, structured layout)
-  - 3 from different partnerships with different PDF generators (varying layouts, fonts, spacing)
-  - 2 with handwritten annotations (simulated by overlaying text at angles, or added "handwritten-style" font notes)
+  - 5 from different partnerships with different PDF generators (varying layouts, fonts, spacing, column widths, footer positions)
   - Amounts range from $5,000 to $2.3M
   - Include boxes 1-13 plus various codes in Box 20
   - One K-1 has a corrected/amended indicator
