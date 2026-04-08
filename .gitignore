@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# uv
+.uv/
+
+# Generated output (the generator emits into test_suite/ per spec §2.3)
+# Keep config.yaml and the generator script; ignore generated artifacts.
+test_suite/test_cases/*/input_files/
+test_suite/shared_data/
+test_suite/gold_standards/
+test_suite/manifest.json
+test_suite/canary_registry.json
+test_suite/error_registry.json
+
+# Loop runner artifacts
+.ralph-exit
+/tmp/run*/
+
+# Beads — keep config + JSONL export, ignore SQLite DB
+.beads/*.db
+.beads/*.db-journal
+.beads/*.db-wal
+.beads/*.db-shm
+
+# OS / editor
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
