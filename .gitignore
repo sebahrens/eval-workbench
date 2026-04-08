@@ -42,3 +42,8 @@ test_suite/error_registry.json
 *.swo
 .idea/
 .vscode/
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
