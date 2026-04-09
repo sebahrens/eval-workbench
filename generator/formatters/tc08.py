@@ -690,18 +690,14 @@ def _tc08_gold(
         expected_outputs=expected_outputs,
         canary_verification=canary_verification,
         error_detection={
-            "ERR-005": {
-                "type": "mismatched_total",
-                "file": f"{_INPUT_DIR}/payroll_data_fy2025.xlsx",
-                "severity": "material",
-                "description": "Payroll total wages row omits one employee",
-            },
-            "ERR-019": {
-                "type": "classification_error",
-                "file": f"{_INPUT_DIR}/rd_supply_expenses.xlsx",
-                "severity": "immaterial",
-                "description": "Supply expense classified under wrong project code",
-            },
+            "ERR-005": (
+                "Payroll total wages row omits one employee — "
+                "mismatched_total in payroll_data_fy2025.xlsx"
+            ),
+            "ERR-019": (
+                "Supply expense classified under wrong project code (RD-011) — "
+                "classification_error in rd_supply_expenses.xlsx"
+            ),
         },
         scoring_hints=scoring_hints,
     )

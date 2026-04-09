@@ -1549,18 +1549,14 @@ def _tc15_gold(
             "read_industry_overview": canaries.canary_for("tc15_industry_overview"),
         },
         error_detection={
-            "ERR-022": {
-                "type": "missing_data",
-                "file": f"{_INPUT_DIR}/comparable_companies_trading.xlsx",
-                "description": "EV/EBITDA multiple is blank for MidWest Materials Group",
-                "severity": "immaterial",
-            },
-            "ERR-025": {
-                "type": "mismatched_total",
-                "file": f"{_INPUT_DIR}/historical_financials_3yr.xlsx",
-                "description": "FY2024 total revenue does not match sum of components",
-                "severity": "material",
-            },
+            "ERR-022": (
+                "EV/EBITDA multiple is blank for MidWest Materials Group — "
+                "missing_data in comparable_companies_trading.xlsx"
+            ),
+            "ERR-025": (
+                "FY2024 total revenue does not match sum of components — "
+                "mismatched_total in historical_financials_3yr.xlsx"
+            ),
         },
         scoring_hints={
             "correctness": (
