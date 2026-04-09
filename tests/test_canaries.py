@@ -1,4 +1,9 @@
-"""Tests for generator.canaries — canary generation and registry."""
+"""Tests for generator.canaries — canary generation, registry, and quality gate.
+
+The quality gate (TestCanaryQualityGate) runs the full generator and verifies
+that every canary in canary_registry.json is findable in its target file.
+Ref: bead synth-data-6f8, prompt.md §1.6.
+"""
 
 from __future__ import annotations
 
@@ -6,6 +11,9 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+
+from generate_test_suite import generate
 from generator.canaries import (
     build_registry,
     embed_canary_csv_comment,
@@ -15,6 +23,7 @@ from generator.canaries import (
     embed_canary_xlsx,
     generate_canary,
 )
+from generator.config import load_config
 
 # ---------------------------------------------------------------------------
 # Basic canary generation
@@ -189,3 +198,88 @@ class TestEmbedCsv:
         path.write_text(line + "col1,col2\n1,2\n")
         content = path.read_text()
         assert "CANARY: NP8Q3V6X" in content
+
+
+# ---------------------------------------------------------------------------
+# Quality gate: every canary findable in its generated file
+# ---------------------------------------------------------------------------
+
+def _find_canary_in_file(file_path: Path, canary: str) -> bool:
+    """Return True if *canary* is findable in *file_path*.
+
+    Supports xlsx (openpyxl properties), docx (core_properties.comments),
+    pdf (raw bytes), and csv/txt (raw text).
+    """
+    suffix = file_path.suffix.lower()
+    needle = f"CANARY: {canary}"
+
+    if suffix == ".xlsx":
+        from openpyxl import load_workbook
+        wb = load_workbook(file_path)
+        desc = wb.properties.description or ""
+        return needle in desc
+
+    if suffix == ".docx":
+        from docx import Document
+        doc = Document(str(file_path))
+        comments = doc.core_properties.comments or ""
+        return needle in comments
+
+    if suffix == ".pdf":
+        raw = file_path.read_bytes()
+        return needle.encode() in raw
+
+    if suffix in (".csv", ".txt", ".md"):
+        return needle in file_path.read_text(errors="replace")
+
+    # Fallback: try raw bytes
+    return needle.encode() in file_path.read_bytes()
+
+
+class TestCanaryQualityGate:
+    """Quality gate: after generation, every canary must be findable."""
+
+    @pytest.fixture(scope="class")
+    def suite_dir(self, tmp_path_factory: pytest.TempPathFactory) -> Path:
+        """Run the generator once and return the output directory."""
+        out = tmp_path_factory.mktemp("canary_qg")
+        config = load_config("config.yaml")
+        generate(config, out)
+        return out
+
+    def test_registry_exists(self, suite_dir: Path) -> None:
+        reg_path = suite_dir / "canary_registry.json"
+        assert reg_path.exists(), "canary_registry.json not emitted"
+
+    def test_all_entries_have_file_path(self, suite_dir: Path) -> None:
+        reg = json.loads((suite_dir / "canary_registry.json").read_text())
+        missing = [e["file_key"] for e in reg if not e.get("file_path")]
+        assert not missing, f"Canary entries without file_path: {missing}"
+
+    def test_all_files_exist(self, suite_dir: Path) -> None:
+        reg = json.loads((suite_dir / "canary_registry.json").read_text())
+        missing = [
+            e["file_key"]
+            for e in reg
+            if not (suite_dir / e["file_path"]).exists()
+        ]
+        assert not missing, f"Canary files not found on disk: {missing}"
+
+    def test_every_canary_findable(self, suite_dir: Path) -> None:
+        """Core quality gate: every canary must be present in its file."""
+        reg = json.loads((suite_dir / "canary_registry.json").read_text())
+        failures: list[str] = []
+        for entry in reg:
+            fpath = suite_dir / entry["file_path"]
+            if not fpath.exists():
+                failures.append(f"{entry['file_key']}: file missing ({entry['file_path']})")
+                continue
+            if not _find_canary_in_file(fpath, entry["canary"]):
+                failures.append(
+                    f"{entry['file_key']}: canary {entry['canary']} not found "
+                    f"in {entry['file_path']} (location: {entry.get('location', '?')})"
+                )
+        assert not failures, (
+            f"{len(failures)} canary(ies) not findable:\n"
+            + "\n".join(f"  - {f}" for f in failures)
+        )
