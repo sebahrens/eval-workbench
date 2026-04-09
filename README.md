@@ -2,6 +2,19 @@
 
 A deterministic test suite for evaluating AI agents on Big 4 professional services workloads (Audit, Tax, Advisory). The suite generates 18 test cases built around a single fictional company — Cascade Industries, Inc. — ensuring cross-referential integrity across all service lines.
 
+## Documentation
+
+| Doc | For |
+|---|---|
+| [`docs/architecture.md`](./docs/architecture.md) | How the three-phase generator works and why it exists |
+| [`docs/canonical-model.md`](./docs/canonical-model.md) | Reference for the Cascade Industries data model |
+| [`docs/canaries-and-errors.md`](./docs/canaries-and-errors.md) | How provenance canaries and planted errors work |
+| [`docs/scoring.md`](./docs/scoring.md) | Grading methodology, rubric, and test execution protocol |
+| [`docs/adding-a-test-case.md`](./docs/adding-a-test-case.md) | How to extend the suite with TC-19+ |
+| [`docs/troubleshooting.md`](./docs/troubleshooting.md) | Common failure modes and fixes |
+| [`docs/glossary.md`](./docs/glossary.md) | Big 4 terminology for engineers |
+| [`prompt.md`](./prompt.md) | Authoritative specification (the original design doc) |
+
 ## Prerequisites
 
 - Python 3.11+
