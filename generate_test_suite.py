@@ -21,6 +21,7 @@ from generator.config import Config, ConfigError, load_config
 from generator.errors import ErrorRegistry
 from generator.formatters.tc01 import emit_tc01
 from generator.formatters.tc05 import emit_tc05
+from generator.formatters.tc06 import emit_tc06
 from generator.golds.framework import emit_all_golds
 from generator.manifest import Manifest
 from generator.model.build import build_model
@@ -38,6 +39,11 @@ _CANARY_FILE_KEYS: list[str] = sorted([
     "ar_confirmations_summary",
     "allowance_analysis",
     "workpaper_memo_template",
+    # TC-06 files
+    "cascade_consolidated_tb_fy2025",
+    "tax_provision_fy2024_workpaper",
+    "perm_temp_differences_fy2025",
+    "statutory_rates",
 ])
 
 
@@ -84,6 +90,7 @@ def generate(config: Config, output: Path) -> Manifest:
         # ── Phase 2: TC formatters ───────────────────────────────────
         emit_tc01(model, output, canaries, errors, manifest)
         emit_tc05(model, output, canaries, errors, manifest)
+        emit_tc06(model, output, canaries, errors, manifest)
 
         # ── Emit gold standards ──────────────────────────────────────
         emit_all_golds(
