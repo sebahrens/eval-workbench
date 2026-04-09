@@ -20,6 +20,7 @@ from generator.canaries import build_registry as build_canary_registry
 from generator.config import Config, ConfigError, load_config
 from generator.errors import ErrorRegistry
 from generator.formatters.tc01 import emit_tc01
+from generator.formatters.tc02 import emit_tc02
 from generator.formatters.tc05 import emit_tc05
 from generator.formatters.tc06 import emit_tc06
 from generator.formatters.tc07 import emit_tc07
@@ -40,6 +41,10 @@ _CANARY_FILE_KEYS: list[str] = sorted([
     "ar_confirmations_summary",
     "allowance_analysis",
     "workpaper_memo_template",
+    # TC-02 files
+    "bank_confirmation_fy2025",
+    "bank_statement_dec2025",
+    "cascade_gl_cash_dec2025",
     # TC-06 files
     "cascade_consolidated_tb_fy2025",
     "tax_provision_fy2024_workpaper",
@@ -100,6 +105,7 @@ def generate(config: Config, output: Path) -> Manifest:
     with Manifest(output) as manifest:
         # ── Phase 2: TC formatters ───────────────────────────────────
         emit_tc01(model, output, canaries, errors, manifest)
+        emit_tc02(model, output, canaries, errors, manifest)
         emit_tc05(model, output, canaries, errors, manifest)
         emit_tc06(model, output, canaries, errors, manifest)
         emit_tc07(model, output, canaries, errors, manifest)

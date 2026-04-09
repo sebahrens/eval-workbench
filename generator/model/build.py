@@ -15,6 +15,7 @@ import random
 from dataclasses import dataclass
 from decimal import Decimal
 
+from generator.model.bank import BankModel, generate_bank_model, post_bank_to_gl
 from generator.model.employees import Employee, generate_employees
 from generator.model.gl import Ledger
 from generator.model.intercompany import (
@@ -61,6 +62,7 @@ class CascadeModel:
     leases: list[Lease]
     lease_schedules: list[LeaseScheduleRow]
     tax_provisions: dict[int, TaxProvision]
+    bank: BankModel | None = None
 
 
 def build_model(seed: int = 42) -> CascadeModel:
@@ -108,6 +110,11 @@ def build_model(seed: int = 42) -> CascadeModel:
     lease_schedules = compute_lease_schedules(leases)
     post_leases_to_gl(ledger, leases, lease_schedules)
 
+    # ── Bank transactions (TC-02) ─────────────────────────────────
+    bank_rng = random.Random(seed + 2)  # Isolated RNG for bank model
+    bank_model = generate_bank_model(bank_rng)
+    post_bank_to_gl(ledger, bank_model)
+
     # ── Tax provisions ──────────────────────────────────────────────
     # Pre-tax income comes from the income statement (built from GL)
     # computed BEFORE tax entries so we get the right base.
@@ -130,4 +137,5 @@ def build_model(seed: int = 42) -> CascadeModel:
         leases=leases,
         lease_schedules=lease_schedules,
         tax_provisions=tax_provisions,
+        bank=bank_model,
     )

@@ -271,11 +271,27 @@ def generate_bank_model(rng: random.Random) -> BankModel:
     # Current net from generated amounts (excluding payroll already added)
     generated_net = inflow_total - outflow_total
 
-    # Adjust the last inflow to make everything balance
+    # Adjust inflows to make everything balance.  Spread the adjustment
+    # across all inflows proportionally to avoid pushing any single
+    # transaction negative (which would violate GL debit/credit semantics).
     adjustment = remaining_net - generated_net
-    if inflows:
-        old_amount, cat = inflows[-1]
-        inflows[-1] = (old_amount + adjustment, cat)
+    if inflows and adjustment != Decimal("0"):
+        total_inflow = sum(a for a, _ in inflows)
+        if total_inflow > 0:
+            remaining_adj = adjustment
+            for i in range(len(inflows)):
+                if i == len(inflows) - 1:
+                    # Last one absorbs any rounding remainder
+                    share = remaining_adj
+                else:
+                    share = (inflows[i][0] * adjustment / total_inflow).to_integral_value()
+                    remaining_adj -= share
+                old_amount, cat = inflows[i]
+                inflows[i] = (old_amount + share, cat)
+        else:
+            # Fallback: put it all on the last inflow
+            old_amount, cat = inflows[-1]
+            inflows[-1] = (old_amount + adjustment, cat)
 
     # Add inflows to matched lists
     for amount, cat in inflows:
