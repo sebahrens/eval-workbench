@@ -220,24 +220,33 @@ while true; do
     # Phase 2: Generator + grader checks (only with include-tests, only in build mode)
     # This replaces the Go-era fuzz + visual phases. It runs pytest, ruff,
     # and a determinism smoke test if the generator exists.
+    #
+    # NOTE: we enable pipefail inside this block so exit codes propagate
+    # through pipelines. Without it, `grader | tail` would mask grader
+    # failures behind tail's exit code. Also, grader output is NOT piped
+    # through tail — truncation chopped the first 4 TCs when 2+ TCs
+    # failed with subfield expansions, which created a false TC-01..TC-04
+    # silent-skip phantom (see docs/troubleshooting.md).
     if [ "$INCLUDE_TESTS" = true ] && [ "$MODE" = "build" ]; then
         echo ""
         echo "  Phase 2: Python checks (pytest, ruff, determinism smoke test)"
         CHECK_START=$(date +%s)
         set +e
+        set -o pipefail
 
-        # ruff (only if config exists)
+        # ruff (only if config exists). pipefail propagates ruff's exit
+        # code even though we pipe through tail for output bounding.
         if [ -f "$PROJECT_DIR/pyproject.toml" ] || [ -f "$PROJECT_DIR/ruff.toml" ]; then
-            (cd "$PROJECT_DIR" && uv run ruff check . 2>&1 | tail -20)
+            (cd "$PROJECT_DIR" && uv run ruff check . 2>&1 | tail -40)
             RUFF_EXIT=$?
         else
             echo "  (skipping ruff — no pyproject.toml / ruff.toml yet)"
             RUFF_EXIT=0
         fi
 
-        # pytest (only if tests exist)
+        # pytest (only if tests exist). Same pipefail behavior.
         if [ -d "$PROJECT_DIR/tests" ]; then
-            (cd "$PROJECT_DIR" && uv run python -m pytest tests/ -x --tb=short 2>&1 | tail -30)
+            (cd "$PROJECT_DIR" && uv run python -m pytest tests/ -x --tb=short 2>&1 | tail -60)
             PYTEST_EXIT=$?
         else
             echo "  (skipping pytest — no tests/ directory yet)"
@@ -274,9 +283,13 @@ while true; do
                 echo "  ⚠ generate_test_suite.py failed to run (exits $GEN1_EXIT, $GEN2_EXIT)"
                 DETERM_EXIT=1
             fi
-            # Auto-grader self-test (reuses $RUN1 before cleanup)
+            # Auto-grader self-test (reuses $RUN1 before cleanup).
+            # No tail: the grader output is bounded by the number of test
+            # cases plus any failing subfields. Truncation here is what
+            # created the TC-01..TC-04 silent-skip phantom — see
+            # docs/troubleshooting.md.
             if [ -f "$PROJECT_DIR/scoring/auto_grader.py" ]; then
-                (cd "$PROJECT_DIR" && uv run python scoring/auto_grader.py --self-test --suite-dir "$RUN1" 2>&1 | tail -20)
+                (cd "$PROJECT_DIR" && uv run python scoring/auto_grader.py --self-test --suite-dir "$RUN1" 2>&1)
                 GRADER_EXIT=$?
                 if [ $GRADER_EXIT -ne 0 ]; then
                     echo "  ⚠ auto_grader self-test failed — gold standards do not pass their own tests"
