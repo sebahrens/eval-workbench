@@ -1,0 +1,85 @@
+# Cascade Industries Test Suite — Master Configuration
+# This file is read by generator/config.py and drives all generated output.
+
+seed: 42
+
+output_dir: test_suite
+
+# Company-level parameters (§1.1–1.3 of prompt.md)
+company:
+  name: "Cascade Industries, Inc."
+  type: "US C-Corporation"
+  industry: "Mid-market manufacturer"
+  headquarters: "Portland, Oregon"
+  fiscal_year_end: "12-31"
+  years: [2023, 2024, 2025]
+  current_year: 2025
+  consolidated_revenue: 200_000_000  # ~$200M
+
+  # Subsidiary structure (§1.2)
+  subsidiaries:
+    precision_components:
+      legal_name: "Cascade Precision Components LLC"
+      location: "Portland, OR"
+      state: "OR"
+      entity_code: "PC"
+      revenue: 95_000_000
+      type: "Core manufacturing (industrial parts)"
+      gross_margin: 0.35
+      employee_count: 350
+
+    advanced_materials:
+      legal_name: "Cascade Advanced Materials, Inc."
+      location: "Austin, TX"
+      state: "TX"
+      entity_code: "AM"
+      revenue: 65_000_000
+      type: "Specialty materials R&D and manufacturing"
+      gross_margin: 0.52
+      rd_spend_pct: 0.12
+      employee_count: 280
+
+    distribution_services:
+      legal_name: "Cascade Distribution Services LLC"
+      location: "Chicago, IL"
+      state: "IL"
+      entity_code: "DS"
+      revenue: 40_000_000
+      type: "Warehousing and logistics"
+      gross_margin: 0.18
+      employee_count: 220
+
+  # Growth rates (§2.4 rule 6)
+  growth_rates:
+    fy2023_to_fy2024: 0.06
+    fy2024_to_fy2025: 0.09
+
+  # Intercompany relationships (§1.3)
+  intercompany:
+    raw_materials_markup: 0.08        # Precision → Advanced at cost-plus-8%
+    management_fee_pct: 0.015         # Parent → all subs, 1.5% of sub revenue
+    intercompany_loan_principal: 5_000_000
+    intercompany_loan_rate: 0.05      # 5% interest
+
+  # Employee roster (§1.4)
+  employees:
+    total_count: 850
+    annual_turnover_rate: 0.08
+    remote_states: ["CA", "WA", "NY"]
+
+  # Seasonal revenue pattern (§2.4 rule 1) — Q4-heavy manufacturing
+  seasonal_weights:
+    Q1: 0.20
+    Q2: 0.25
+    Q3: 0.25
+    Q4: 0.30
+
+# Canary assignments (§1.6)
+# Map of file key → canary code.  Populated by the canary generator at build time;
+# seed this section with an empty dict so the loader doesn't reject the config.
+canary_assignments: {}
+
+# Error injection points (§1.7)
+# Map of error_id → injection descriptor.  Populated by the error framework at
+# build time; seed with an empty dict.
+error_injections: {}

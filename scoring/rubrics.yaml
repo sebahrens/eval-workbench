@@ -1,0 +1,513 @@
+# Cascade Industries Test Suite — Scoring Rubrics
+# Per-test-case rubric on 5 dimensions (prompt.md §7.1).
+# Each dimension is scored 1–3 with concrete anchors referencing gold standards.
+
+dimensions:
+  correctness:
+    description: "Numerical and factual accuracy against the gold standard"
+    generic_anchors:
+      3: "All values match gold standard (±0.5% tolerance for computed values)"
+      2: "Minor errors that don't change conclusions"
+      1: "Material errors in key outputs"
+
+  completeness:
+    description: "All requested deliverables and components produced"
+    generic_anchors:
+      3: "All requested deliverables produced, all components present"
+      2: "Missing minor elements (e.g., one sheet, one section)"
+      1: "Missing major deliverables or sections"
+
+  format_compliance:
+    description: "Valid files, professional formatting, correct file types"
+    generic_anchors:
+      3: "Valid files, professional formatting, correct file types"
+      2: "Functional but poorly formatted, or minor type issues"
+      1: "Broken files, wrong file type, or unusable output"
+
+  robustness:
+    description: "Handling of edge cases, messy data, format variations, ambiguity"
+    generic_anchors:
+      3: "Handled all edge cases (messy data, format variations, ambiguity)"
+      2: "Handled most edge cases, stumbled on some"
+      1: "Failed on edge cases or didn't attempt to handle them"
+
+  communication:
+    description: "Proactive explanation of approach, flagged uncertainties, identified errors"
+    generic_anchors:
+      3: "Proactively explained approach, flagged uncertainties, identified errors"
+      2: "Adequate communication, some gaps"
+      1: "Silent about approach, missed obvious items to flag"
+
+# ---------------------------------------------------------------------------
+# Per-test-case rubrics
+# ---------------------------------------------------------------------------
+
+test_cases:
+
+  TC-01:
+    title: "Trial Balance Reconciliation"
+    service_line: Audit
+    difficulty: Complex
+    capabilities: [File Reading, Data Analysis, File Writing]
+    correctness:
+      3: "118 accounts mapped; 3 new / 1 missing / 2 renamed accounts identified; 7 flagged variances match gold list; ERR-001 ($9,000 AR mismatch) caught; largest variance 14.2% on account 4110"
+      2: "Accounts mapped within ±2; most variances identified but misses 1-2 flagged accounts or minor rounding differences; ERR-001 detected but amount slightly off"
+      1: "Significant mapping errors; misses ERR-001 entirely; incorrect variance calculations or wrong flagged accounts"
+    completeness:
+      3: "All 4 sheets present (Mapping, Variance Analysis, Exceptions, Tie-Out) with all required content"
+      2: "3 of 4 sheets present, or all sheets present but one is missing significant content"
+      1: "Missing 2+ sheets or major content gaps in multiple sheets"
+    format_compliance:
+      3: "Valid xlsx; professional formatting; opens without errors; clean headers and column alignment"
+      2: "Valid xlsx but poorly formatted; inconsistent column widths, missing headers, or ugly layout"
+      1: "Broken file, wrong file type, or unusable layout"
+    robustness:
+      3: "Handled merged cells, leading spaces, abbreviations (Accts Recv → Accounts Receivable), renamed accounts, and zero-crossing variance calculations"
+      2: "Handled most messy data issues but stumbled on abbreviation mapping or zero-crossing percentages"
+      1: "Failed on merged cells or abbreviations; produced garbage from unclean data"
+    communication:
+      3: "Explained mapping approach; flagged ERR-001 with specific dollar amount; noted renamed accounts and messy data issues; called out zero-crossing variance methodology"
+      2: "Mentioned some data quality issues but missed flagging ERR-001 or renamed accounts explicitly"
+      1: "Silent about data quality issues; no mention of error or uncertainties"
+
+  TC-02:
+    title: "Bank Reconciliation & Confirmation Matching"
+    service_line: Audit
+    difficulty: Complex
+    capabilities: [File Reading, Data Analysis, File Writing]
+    correctness:
+      3: "Adjusted bank balance = adjusted book balance = $4,287,331; confirmation balance $4,312,117 correctly reconciled; all 4 outstanding checks and 2 deposits in transit identified"
+      2: "Balances within ±$500 of gold; most reconciling items found but misses 1 outstanding check or deposit in transit"
+      1: "Balances don't agree; material reconciling items missed; confirmation not properly tied"
+    completeness:
+      3: "Complete reconciliation schedule with all required sections (bank balance → adjusted, book balance → adjusted, confirmation tie); all 340 transactions analyzed"
+      2: "Reconciliation present but missing confirmation tie or incomplete transaction matching"
+      1: "Incomplete reconciliation; missing major sections"
+    format_compliance:
+      3: "Valid xlsx; standard bank reconciliation format; professional presentation"
+      2: "Functional but non-standard layout or missing section headers"
+      1: "Broken file or unusable format"
+    robustness:
+      3: "Fuzzy-matched transactions across different naming conventions (bank abbreviations vs. company descriptions); handled date offsets (±2 business days); correctly matched by amount"
+      2: "Matched most transactions but missed some due to naming differences or date offsets"
+      1: "Failed on fuzzy matching; large number of unmatched transactions"
+    communication:
+      3: "Explained matching methodology; flagged unmatched items; noted confirmation reconciliation logic; identified adjustments needed"
+      2: "Adequate explanation of results but missing detail on methodology or unmatched items"
+      1: "No explanation of approach; unexplained differences left unaddressed"
+
+  TC-03:
+    title: "Substantive Analytical Procedures — Revenue"
+    service_line: Audit
+    difficulty: Complex
+    capabilities: [File Reading, Data Analysis, RAG, File Writing]
+    correctness:
+      3: "Consolidated revenue growth computed as 9.2% (not 8%); correctly identified management understatement; per-product-line growth rates match gold; declining product line (-4%) identified"
+      2: "Growth rate close to 9.2% but rounded differently; identified discrepancy with management claim but analysis imprecise"
+      1: "Accepted management's 8% claim without challenge; material errors in growth rate calculations"
+    completeness:
+      3: "Both Word memo and Excel workbook produced; memo covers all 6 required sections (scope, sources, methodology, findings, conclusion, follow-up); all product lines analyzed monthly and annually"
+      2: "Both files produced but memo missing a section or Excel missing a product line"
+      1: "Missing one deliverable entirely or both have major gaps"
+    format_compliance:
+      3: "Professional audit memo format; Excel has clear data tables and charts; proper document structure"
+      2: "Functional but memo lacks professional tone or Excel charts are missing/poorly formatted"
+      1: "Broken files or unusable output"
+    robustness:
+      3: "Extracted relevant benchmarks from pages 4, 7, and 11 of the industry report (not just page 1); compared each product line to appropriate benchmark"
+      2: "Found some benchmarks but missed data buried on later pages of the report"
+      1: "Failed to use industry report or only referenced easily accessible data"
+    communication:
+      3: "Flagged management representation discrepancy (8% vs 9.2%); discussed whether understatement is rounding vs intentional; recommended follow-up procedures"
+      2: "Noted the discrepancy but didn't analyze its significance or recommend follow-up"
+      1: "Didn't flag the management representation issue"
+
+  TC-04:
+    title: "Lease Extraction & Schedule Population (ASC 842)"
+    service_line: Audit
+    difficulty: Adversarial
+    capabilities: [File Reading, Data Analysis, File Writing]
+    correctness:
+      3: "All 15 leases extracted with correct terms; 2 short-term exemptions identified; 3 amended leases use amended (not original) terms"
+      2: "12-14 leases correct; identifies most amendments but uses original terms for one; short-term exemptions mostly correct"
+      1: "Fewer than 12 leases correct; uses original terms for amended leases; misses short-term exemptions"
+    completeness:
+      3: "Complete lease schedule matching existing format; all 15 leases populated with all required fields (lessee, lessor, commencement, term, rent, escalation, renewal, purchase, termination)"
+      2: "Schedule populated but missing fields for some leases or missing 1-2 leases"
+      1: "Incomplete schedule with major gaps"
+    format_compliance:
+      3: "Valid xlsx matching partial schedule format; consistent data entry; opens without errors"
+      2: "Functional but format doesn't match existing entries or inconsistent data formatting"
+      1: "Broken file or format incompatible with existing schedule"
+    robustness:
+      3: "Handled all PDF variations (single-column, two-column, scanned-style); flagged OCR uncertainties ($ vs S, 1 vs l) instead of inserting wrong values; processed amendments correctly"
+      2: "Handled text-native PDFs well but struggled with scanned PDFs; some OCR errors silently inserted"
+      1: "Failed on non-standard PDF layouts; silently inserted OCR errors; missed amendments"
+    communication:
+      3: "Flagged uncertain extractions from scanned PDFs; noted judgment calls on renewal reasonably-certain determinations; highlighted amended terms vs original"
+      2: "Mentioned some uncertainties but not consistently across all problematic leases"
+      1: "No flagging of uncertainties; no mention of judgment calls or OCR issues"
+
+  TC-05:
+    title: "Audit Workpaper Memo — Accounts Receivable"
+    service_line: Audit
+    difficulty: Routine
+    capabilities: [File Reading, RAG, File Writing]
+    correctness:
+      3: "All data references accurate (aging buckets, confirmation results, allowance calculations); audit conclusions logically supported by cited evidence; concentration risk identified"
+      2: "Most data references correct but 1-2 minor inaccuracies in cited figures; conclusions reasonable"
+      1: "Material data errors; conclusions not supported by evidence; missed concentration risk"
+    completeness:
+      3: "All template sections populated (Objective, Scope, Procedures, Findings, Conclusion); covers confirmation, aging, subsequent receipts, and allowance assessment"
+      2: "Template used but one section thin or one procedure area not addressed"
+      1: "Template not followed or major sections missing"
+    format_compliance:
+      3: "Valid docx using firm template; professional Big 4 audit language ('we obtained sufficient appropriate audit evidence...'); consistent formatting"
+      2: "Template used but tone informal or formatting inconsistent"
+      1: "Template not used or broken document"
+    robustness:
+      3: "Referenced specific data from all three input workpapers; identified aged receivables and concentration risk from aging schedule"
+      2: "Referenced most input data but missed insights from one workpaper"
+      1: "Superficial data references; didn't analyze the underlying workpaper data"
+    communication:
+      3: "Clear logical flow from procedures → findings → conclusion; flagged any concentration risk or material aged balances; professional tone throughout"
+      2: "Adequate flow but some gaps in connecting findings to conclusions"
+      1: "Disjointed memo; conclusions not connected to procedures performed"
+
+  TC-06:
+    title: "Tax Provision (ASC 740)"
+    service_line: Tax
+    difficulty: Complex
+    capabilities: [File Reading, Data Analysis, File Writing]
+    correctness:
+      3: "Effective tax rate ~24.8%; current and deferred provisions tie; deferred rollforward balances; rate reconciliation explains statutory-to-effective gap; all permanent and temporary differences correctly computed"
+      2: "ETR within 0.5% of 24.8%; most line items correct but minor differences in deferred rollforward or rate reconciliation"
+      1: "ETR materially wrong; provisions don't tie; deferred rollforward doesn't balance"
+    completeness:
+      3: "All 4 sheets (Current Provision, Deferred Rollforward, Rate Reconciliation, Summary); every permanent and temporary difference included"
+      2: "All sheets present but one is missing line items or the summary lacks a tie-out"
+      1: "Missing sheets or major computation steps"
+    format_compliance:
+      3: "Valid xlsx; standard tax provision workpaper format; clear labeling of assumptions and computations"
+      2: "Functional but non-standard layout or unclear labeling"
+      1: "Broken file or computations not traceable"
+    robustness:
+      3: "Correctly derived pre-tax book income from TB; applied blended state rate with apportionment weighting; handled R&D credit offset; all differences correctly classified as permanent vs temporary"
+      2: "Most computations correct but missed one difference classification or the blended rate calculation"
+      1: "Failed to distinguish permanent vs temporary; incorrect rate application"
+    communication:
+      3: "Explained methodology; noted key assumptions (blended state rate, R&D credit); verified tie-outs and stated what was checked"
+      2: "Some explanation but missing key assumption disclosures"
+      1: "No methodology explanation; no verification statements"
+
+  TC-07:
+    title: "K-1 Extraction & Consolidation"
+    service_line: Tax
+    difficulty: Adversarial
+    capabilities: [File Reading, Data Analysis, File Writing]
+    correctness:
+      3: "All 8 K-1s extracted correctly; amended K-1 changes identified ($340K → $285K ordinary income + $55K guaranteed payment); consolidated totals exact; Section 199A C-corp inapplicability caught"
+      2: "Most K-1s correct; amendment detected but amounts slightly off; Section 199A issue identified but explanation imprecise"
+      1: "Multiple K-1 extraction errors; missed amendment or Section 199A issue"
+    completeness:
+      3: "Consolidated schedule with all boxes (1-13 + Box 20 codes); Form 1120 line mapping; amendment analysis; special handling flags"
+      2: "Schedule present but missing Box 20 codes or Form 1120 mapping"
+      1: "Incomplete extraction; missing consolidation or mapping"
+    format_compliance:
+      3: "Valid xlsx; organized by K-1 box number and category; clear entity identification"
+      2: "Functional but disorganized or unclear entity labeling"
+      1: "Broken file or unusable layout"
+    robustness:
+      3: "Handled 5 different PDF layouts (varying fonts, spacing, column widths); correctly parsed all amount ranges ($5K to $2.3M); identified amended indicator"
+      2: "Handled most layouts but misread amounts from 1-2 non-standard K-1s"
+      1: "Failed on non-standard layouts; multiple extraction errors from format variations"
+    communication:
+      3: "Flagged amended K-1 with specific changes; explained Section 199A inapplicability for C-corps; noted passive activity / at-risk limitation considerations"
+      2: "Flagged some special items but missed Section 199A or amendment details"
+      1: "No flagging of special handling items; silent about amendment"
+
+  TC-08:
+    title: "R&D Tax Credit Study (Section 41)"
+    service_line: Tax
+    difficulty: Complex
+    capabilities: [File Reading, Data Analysis, RAG, File Writing]
+    correctness:
+      3: "8 of 12 projects qualified; 2 borderline flagged for review; 2 disqualified (including market research mislabeled as R&D); credit ~$185,000; QRE amounts match gold per project"
+      2: "Qualification decisions mostly correct (±1 project); credit within 10% of $185K; borderline projects identified but rationale weak"
+      1: "Major qualification errors; credit materially wrong; market research project incorrectly qualified"
+    completeness:
+      3: "All 4 deliverables: project qualification Excel, QRE computation Excel, credit calculation Excel, documentation memos Word (one section per qualifying project)"
+      2: "3 of 4 deliverables present or one deliverable missing significant content"
+      1: "Missing multiple deliverables"
+    format_compliance:
+      3: "All files valid; Excel has clear project-by-project breakdowns; memos address four-part test for each project"
+      2: "Functional but memos lack structure or Excel doesn't break out per-project"
+      1: "Broken files or memos don't address four-part test"
+    robustness:
+      3: "Applied four-part test rigorously to each project; allocated wages using time records × W-2; excluded overhead and admin; used ASC method correctly with prior year QREs ($3.1M, $3.4M)"
+      2: "Most allocations correct but imprecise on borderline projects or wage allocation methodology"
+      1: "Failed to apply four-part test; incorrect QRE methodology"
+    communication:
+      3: "Documented qualification rationale per project; flagged borderline projects explicitly for manager review; explained ASC method and prior-year QRE basis"
+      2: "Some rationale but borderline projects not clearly flagged or ASC method not explained"
+      1: "No qualification rationale; no flagging of borderline cases"
+
+  TC-09:
+    title: "Transfer Pricing Documentation"
+    service_line: Tax
+    difficulty: Complex
+    capabilities: [File Reading, Data Analysis, RAG, File Writing]
+    correctness:
+      3: "2 comparables correctly rejected (wrong SIC code, financial distress); IQR 4.2%–8.7%; goods transfer (cost-plus-8%) within range; services transfer (11.2%) flagged as outside range"
+      2: "Comparable rejection mostly correct; IQR close but not exact; one transaction range assessment wrong"
+      1: "Failed to reject inappropriate comparables; IQR materially wrong; didn't identify out-of-range transaction"
+    completeness:
+      3: "Both deliverables: benchmarking Excel and updated results section Word; covers all transaction types (goods, services, interest)"
+      2: "Both files present but one transaction type not analyzed or results section incomplete"
+      1: "Missing a deliverable or major transaction types"
+    format_compliance:
+      3: "Excel has clear benchmarking tables with comparable screening documentation; Word section matches prior year report style"
+      2: "Functional but screening rationale not documented in Excel or Word doesn't match prior year style"
+      1: "Broken files or no screening documentation"
+    robustness:
+      3: "Correctly extracted key data from 42-page prior year report (functional analysis pp. 8-15, economic analysis pp. 22-30, benchmarks pp. 31-38); handled both standard and non-standard comparable companies"
+      2: "Used prior year report but missed data from one section or didn't fully screen comparables"
+      1: "Failed to leverage prior year report; superficial comparable screening"
+    communication:
+      3: "Explained each comparable rejection with specific reasons; flagged the out-of-range services transaction with recommended next steps; noted methodology alignment with prior year"
+      2: "Some explanation but incomplete rejection rationale or no next steps for out-of-range result"
+      1: "No explanation of screening decisions; silent about out-of-range transaction"
+
+  TC-10:
+    title: "Multi-State Apportionment"
+    service_line: Tax
+    difficulty: Routine
+    capabilities: [File Reading, Data Analysis, File Writing]
+    correctness:
+      3: "Apportioned income correct for all states; TX and WA flagged as non-income-tax states requiring different base; CA and NY flagged for incomplete data; WA nexus question raised"
+      2: "Most states correct; identified TX/WA issues but explanation incomplete; missed CA or NY data gap"
+      1: "Material apportionment errors; attempted to compute TX margin tax or WA B&O without proper data"
+    completeness:
+      3: "Complete apportionment schedule for all 6 states; incomplete data flagged; estimated tax liability summary; missing information requirements listed"
+      2: "Schedule present but missing states or incomplete flagging"
+      1: "Incomplete schedule; major states missing"
+    format_compliance:
+      3: "Valid xlsx; clear state-by-state layout; distinguished between zero presence and missing data"
+      2: "Functional but confuses $0 with missing data or unclear state identification"
+      1: "Broken file or states not identifiable"
+    robustness:
+      3: "Distinguished '$0' (zero presence) from blank (data not provided); applied correct formula per state (single sales factor for OR/IL/CA/NY); identified that TX and WA are not income taxes"
+      2: "Mostly correct formulas but treated $0 and blank the same or minor formula error for one state"
+      1: "Applied wrong formulas; didn't distinguish zero from missing; treated all states identically"
+    communication:
+      3: "Explained each state's formula; flagged TX margin tax and WA B&O as requiring different computations with specific information needed; raised nexus question for WA"
+      2: "Some flagging but didn't specify what additional information is needed"
+      1: "No flagging of non-standard states; no nexus discussion"
+
+  TC-11:
+    title: "Quality of Earnings (Financial Due Diligence)"
+    service_line: Advisory
+    difficulty: Complex
+    capabilities: [File Reading, Data Analysis, RAG, File Writing]
+    correctness:
+      3: "Reported EBITDA $28.4M; challenged run-rate customer adjustment ($600K — only 1 quarter history) and recurring consulting fee; adjusted EBITDA ~$29.3M; top customer 18% concentration flagged"
+      2: "EBITDA close to gold; challenged one of two questionable adjustments; concentration risk identified but threshold imprecise"
+      1: "Accepted all management adjustments uncritically; EBITDA materially wrong; missed concentration risk"
+    completeness:
+      3: "Both deliverables: Excel workbook (EBITDA bridge, monthly detail, customer analysis) and Word memo (key findings); all 36 months analyzed; all management adjustments evaluated"
+      2: "Both files present but one analysis area incomplete (e.g., customer analysis missing or not all adjustments evaluated)"
+      1: "Missing a deliverable or major analysis sections"
+    format_compliance:
+      3: "Professional advisory format; EBITDA bridge clearly presented; customer analysis with supporting data tables"
+      2: "Functional but EBITDA bridge hard to follow or customer data not well organized"
+      1: "Broken files or analysis not traceable"
+    robustness:
+      3: "Correctly classified all 7 adjustments; identified the stale PPP loan forgiveness ($250K, FY2023); challenged aggressive annualized run-rate; cross-referenced customer contracts for renewal risk"
+      2: "Classified most adjustments correctly but missed one recurring item or didn't use contract data"
+      1: "Failed to critically evaluate adjustments; accepted management's characterizations at face value"
+    communication:
+      3: "Clearly explained rationale for accepting/rejecting each adjustment; quantified impact of challenges; flagged revenue quality risks and recommended further diligence"
+      2: "Some rationale but incomplete for challenged adjustments or missing diligence recommendations"
+      1: "No rationale for adjustment decisions; no risk flagging"
+
+  TC-12:
+    title: "Data Room Triage & Document Index"
+    service_line: Advisory
+    difficulty: Adversarial
+    capabilities: [File Reading, RAG, Multi-Step Workflow, File Writing]
+    correctness:
+      3: "All 32 files indexed; all red flags identified (litigation $2.5M, CEO golden parachute 3× salary, Acme change-of-control clause, 2 expiring patents, incomplete IP assignments); all 4 missing categories flagged (environmental, regulatory, insurance claims, property surveys)"
+      2: "Most files indexed and most red flags found; missed 1-2 red flags or missing document categories"
+      1: "Incomplete index; missed major red flags (litigation or change-of-control); didn't identify critical missing documents"
+    completeness:
+      3: "All 3 deliverables: document index Excel (Path, Category, Date, Summary, Red Flags), gap analysis Excel (Checklist Item, Status, Priority, Notes), red flags Word memo"
+      2: "2 of 3 deliverables present or one with significant gaps"
+      1: "Missing deliverables or index covers fewer than half the files"
+    format_compliance:
+      3: "Excel columns match spec requirements; gap analysis cross-references 65 checklist items; memo is professional and actionable"
+      2: "Functional but missing column or incomplete cross-reference"
+      1: "Broken files or index not usable"
+    robustness:
+      3: "Read and summarized all 32 files across 7 categories; cross-referenced all 65 checklist items; prioritized missing documents by deal-criticality"
+      2: "Processed most files but skimmed some categories; gap prioritization incomplete"
+      1: "Failed to read files in multiple categories; no gap prioritization"
+    communication:
+      3: "Red flags ranked by severity/urgency; missing documents prioritized with specific rationale (deal-critical vs nice-to-have); recommended immediate follow-up items"
+      2: "Red flags listed but not ranked; missing items noted but not prioritized"
+      1: "Red flags not clearly identified; no prioritization"
+
+  TC-13:
+    title: "Forensic AP Transaction Analysis"
+    service_line: Advisory
+    difficulty: Complex
+    capabilities: [Data Analysis, File Writing]
+    correctness:
+      3: "All 7 anomaly categories found; duplicate exposure $127,340; Benford's deviation in $9,900-$9,999 range; vendor-employee match is PC-0342; exact transaction_ids match gold for all planted anomalies"
+      2: "5-6 of 7 categories found; duplicate total within 10% of $127,340; most specific anomalies identified"
+      1: "Fewer than 5 categories found; duplicate total materially wrong; missed major anomaly types"
+    completeness:
+      3: "Both deliverables: analysis Excel (separate tabs per test — duplicates, Benford's, threshold, temporal, vendor, approver, split) and executive summary Word memo with risk rankings"
+      2: "Both files present but missing tabs or memo lacks risk rankings"
+      1: "Missing a deliverable or analysis covers fewer than half the test categories"
+    format_compliance:
+      3: "Excel tabs clearly labeled with supporting data; memo has executive-ready presentation with risk levels (high/medium/low)"
+      2: "Functional but tab organization unclear or memo not executive-ready"
+      1: "Broken files or analysis not structured"
+    robustness:
+      3: "Handled 52,000 rows efficiently; applied appropriate statistical tests (Benford's chi-square or similar); detected both exact and near-duplicates; identified split transactions across consecutive days"
+      2: "Processed data but statistical methodology imprecise; missed near-duplicates or split transactions"
+      1: "Failed on data volume; no statistical testing; only found obvious anomalies"
+    communication:
+      3: "Quantified exposure per finding; assessed risk level for each anomaly type; recommended specific follow-up procedures per finding"
+      2: "Some quantification but missing risk assessment or incomplete follow-up recommendations"
+      1: "Findings listed without quantification, risk assessment, or recommendations"
+
+  TC-14:
+    title: "13-Week Cash Flow Forecast"
+    service_line: Advisory
+    difficulty: Routine
+    capabilities: [File Reading, Data Analysis, File Writing]
+    correctness:
+      3: "Cash trough Week 8 at $1,340,000; covenant breach identified; deferral scenario (marketing $85K/wk + training $20K/wk from Week 5) brings trough to $2,155,000; sensitivity (1-week collection delay) drops to $780,000"
+      2: "Trough week and amount close (±$100K); covenant breach identified; deferral scenario directionally correct"
+      1: "Trough week or amount materially wrong; missed covenant breach; no deferral analysis"
+    completeness:
+      3: "Excel with weekly detail (inflows, outflows by category, net, cumulative), summary dashboard, and sensitivity analysis; all 13 weeks populated"
+      2: "Most weeks populated but sensitivity analysis missing or dashboard incomplete"
+      1: "Incomplete forecast; missing major sections"
+    format_compliance:
+      3: "Valid xlsx; clear week-by-week layout; dashboard with trend visualization; categorized cash flows"
+      2: "Functional but no dashboard or categories unclear"
+      1: "Broken file or forecast not readable"
+    robustness:
+      3: "Used AR DSO data for collection timing; applied AP due dates correctly; distinguished committed/semi-discretionary/discretionary expenses; handled $0 vs blank in input data"
+      2: "Used most input data correctly but oversimplified collection or payment timing"
+      1: "Ignored DSO or AP timing data; used flat averages instead of schedule-based projections"
+    communication:
+      3: "Flagged covenant breach risk; recommended specific deferrals with timeline; explained sensitivity scenario and its implications for liquidity planning"
+      2: "Identified breach risk but deferral recommendation vague or sensitivity not contextualized"
+      1: "No flagging of covenant breach; no deferral recommendations"
+
+  TC-15:
+    title: "DCF Valuation"
+    service_line: Advisory
+    difficulty: Complex
+    capabilities: [File Reading, Data Analysis, RAG, File Writing]
+    correctness:
+      3: "WACC ~10.8%; EV range $245M-$305M (Gordon Growth) and $260M-$320M (exit multiple); mid-point equity value ~$255M; sensitivity tables correct; management margin expansion assumption (200bps) flagged"
+      2: "WACC within 0.5% of 10.8%; EV ranges directionally correct but bounds off by >$10M; margin expansion noted but not quantified"
+      1: "WACC materially wrong; EV range unreasonable; missed margin expansion assumption"
+    completeness:
+      3: "Excel workbook (assumptions, UFCF, WACC, terminal value both methods, sensitivity tables) and Word summary; all 5 projection years modeled"
+      2: "Most components present but one method missing or sensitivity table incomplete"
+      1: "Incomplete model; missing terminal value or sensitivity analysis"
+    format_compliance:
+      3: "Professional DCF model layout; clearly labeled assumptions and calculations; sensitivity tables properly formatted; one-page summary is concise"
+      2: "Functional model but assumptions mixed with calculations or sensitivity hard to read"
+      1: "Model not traceable; broken formulas or broken files"
+    robustness:
+      3: "Derived beta from comparables; computed cost of debt from interest/debt; used comparable D/E for structure; applied NWC/revenue ratios from historical data; both terminal value methods computed"
+      2: "Most derivations correct but used assumed (not derived) beta or cost of debt"
+      1: "Used arbitrary assumptions instead of deriving from data; single terminal value method"
+    communication:
+      3: "Flagged management's 200bps margin expansion as aggressive; noted key assumption sensitivity; explained WACC derivation and terminal value methodology choice"
+      2: "Some assumption discussion but margin expansion not flagged or WACC not explained"
+      1: "No discussion of assumptions; model presented without context"
+
+  TC-16:
+    title: "Engagement Letter Generation"
+    service_line: Cross-Service
+    difficulty: Routine
+    capabilities: [File Reading, Data Analysis, File Writing]
+    correctness:
+      3: "Audit fee $285,000 × 1.15 = $327,750; tax fee $95,000 + ($12,000 × 3) = $131,000; total $458,750; all merge fields correct (Sarah Chen, March 15 2026, Net 30)"
+      2: "Total within ±$5,000; most merge fields correct but one minor error (e.g., date format)"
+      1: "Fee calculation materially wrong; merge fields missing or incorrect"
+    completeness:
+      3: "All merge fields populated; engagement scope covers both audit and tax; fee breakdown present"
+      2: "Most fields populated but one placeholder unfilled or scope description incomplete"
+      1: "Multiple unfilled placeholders or scope missing"
+    format_compliance:
+      3: "Valid docx; template formatting preserved; merge fields replaced cleanly with no residual placeholders"
+      2: "Functional but some template formatting lost or placeholder remnants visible"
+      1: "Broken document or template structure destroyed"
+    robustness:
+      3: "Correctly looked up fee schedule by revenue tier and entity count; applied complexity multiplier for public-readiness; computed per-entity adder for 3 subsidiaries"
+      2: "Fee schedule lookup correct but complexity multiplier or per-entity calculation slightly off"
+      1: "Failed to use fee schedule; made up fee amounts"
+    communication:
+      3: "Noted the IPO-readiness complexity multiplier; confirmed fee components and calculation basis"
+      2: "Fee presented but calculation basis not explained"
+      1: "No explanation of fee derivation"
+
+  TC-17:
+    title: "Multi-File Deliverable Assembly"
+    service_line: Cross-Service
+    difficulty: Complex
+    capabilities: [File Reading, File Writing, Multi-Step Workflow]
+    correctness:
+      3: "All 6 sections in correct order per formatting guide; TOC page numbers accurate; Roman numerals for front matter, Arabic for body; Excel tables embedded as formatted tables (not screenshots)"
+      2: "Section order correct but TOC has minor page number errors or numbering scheme partially applied"
+      1: "Wrong section order; no TOC; page numbering incorrect or missing"
+    completeness:
+      3: "Single PDF with cover page, TOC, all 6 sections, consistent formatting, page numbers; cover page populated with correct title and date"
+      2: "PDF contains all sections but cover page not populated or TOC missing"
+      1: "Missing sections or not assembled into single PDF"
+    format_compliance:
+      3: "Professional C-suite quality; fonts and spacing per formatting guide; headers/footers consistent; clean page breaks between sections"
+      2: "Assembled but formatting inconsistent between sections or headers/footers missing"
+      1: "Unprofessional appearance; formatting guide not followed"
+    robustness:
+      3: "Handled both docx and xlsx inputs; extracted key tables from Excel and embedded them properly; applied formatting guide rules across different source formats"
+      2: "Handled docx well but Excel table extraction rough or formatting inconsistent"
+      1: "Failed to process mixed file types; Excel data not embedded or corrupted"
+    communication:
+      3: "Confirmed formatting guide adherence; noted any interpretation decisions for ambiguous formatting rules"
+      2: "Minimal communication about assembly process"
+      1: "No communication about approach or decisions"
+
+  TC-18:
+    title: "Prior Year Workpaper Rollforward"
+    service_line: Cross-Service
+    difficulty: Adversarial
+    capabilities: [File Reading, Data Analysis, Multi-Step Workflow, File Writing]
+    correctness:
+      3: "8 of 10 workpapers successfully updated; 2 correctly flagged for manager (management projections format change, planning memo requiring rewrite); CSV format change handled; goodwill impairment file flagged as new audit area"
+      2: "6-7 files updated correctly; most flags raised but missed one (goodwill or format change)"
+      1: "Fewer than 6 files updated; missed critical flags; corrupted formulas or commentary"
+    completeness:
+      3: "All 10 workpapers addressed (8 updated + 2 flagged); new goodwill file acknowledged; structural changes documented"
+      2: "Most files addressed but 1-2 overlooked or structural changes not documented"
+      1: "Fewer than half the files addressed; no documentation of changes"
+    format_compliance:
+      3: "Workpaper structure preserved; formulas intact where still relevant; commentary updated appropriately; file naming consistent"
+      2: "Structure mostly preserved but some formulas broken or commentary stale"
+      1: "Workpaper structure lost; formulas broken; formatting corrupted"
+    robustness:
+      3: "Handled CSV↔xlsx format change transparently; processed new lease entries; correctly identified stale commentary; mapped current year data to prior year workpaper fields despite format differences"
+      2: "Handled most format changes but stumbled on CSV conversion or new lease entries"
+      1: "Failed on format changes; treated CSV as xlsx or vice versa; missed new data"
+    communication:
+      3: "Flagged all structural changes (format changes, new accounts, renamed fields); highlighted goodwill impairment as significant new audit area; explicitly identified what requires manager judgment vs mechanical update"
+      2: "Some flagging but didn't distinguish mechanical updates from judgment calls"
+      1: "No flagging; silently made judgment calls or left issues unaddressed"
