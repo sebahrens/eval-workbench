@@ -171,14 +171,23 @@ while true; do
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
     # Show next bead to work on (mirrors PROMPT_build.md logic: in_progress first, then ready)
+    # bd 1.0 prints "No issues found." instead of empty output when nothing matches,
+    # so filter that out before testing emptiness.
     echo ""
-    IN_PROGRESS=$(cd "$PROJECT_DIR" && bd list --status=in_progress 2>/dev/null | head -1)
+    IN_PROGRESS=$(cd "$PROJECT_DIR" && bd list --status=in_progress 2>/dev/null \
+        | grep -E "^[○◐●✓]" | grep -v "\[epic\]" | head -1)
     if [ -n "$IN_PROGRESS" ]; then
         echo "Resuming in-progress bead:"
         echo "  $IN_PROGRESS"
     else
-        echo "Next ready bead:"
-        cd "$PROJECT_DIR" && bd ready 2>/dev/null | head -1 || echo "  (could not fetch beads)"
+        NEXT_READY=$(cd "$PROJECT_DIR" && bd ready 2>/dev/null \
+            | grep -E "^[○◐●✓]" | grep -v "\[epic\]" | head -1)
+        if [ -n "$NEXT_READY" ]; then
+            echo "Next ready bead:"
+            echo "  $NEXT_READY"
+        else
+            echo "No ready leaf beads — loop has nothing to do."
+        fi
     fi
     echo ""
 

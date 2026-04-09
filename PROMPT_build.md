@@ -99,10 +99,15 @@ If the generator or grader doesn't exist yet (you're implementing foundation wor
 
 ### 5. Complete the task
 
+Close the bead and commit the work in a single logical commit. The bd 1.0 git hooks auto-sync `.beads/issues.jsonl` on commit, so you don't need a separate flush step.
+
 ```bash
-bd close <id> --reason "Implemented: brief description of what was done"
-bd sync --flush-only
+bd close <id> --reason="Implemented: brief description of what was done"
+git add -A
+git commit -m "[<id>] <short description of change>"
 ```
+
+**Never skip the commit.** If you close a bead without committing, the work is stranded on disk and the next iteration has no record of what changed. If the commit fails (e.g. pre-commit hook rejects it), investigate and fix the underlying issue — do not use `--no-verify`.
 
 ## Rules
 
