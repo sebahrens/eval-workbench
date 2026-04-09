@@ -22,6 +22,7 @@ from generator.errors import ErrorRegistry
 from generator.formatters.tc01 import emit_tc01
 from generator.formatters.tc05 import emit_tc05
 from generator.formatters.tc06 import emit_tc06
+from generator.formatters.tc07 import emit_tc07
 from generator.golds.framework import emit_all_golds
 from generator.manifest import Manifest
 from generator.model.build import build_model
@@ -44,6 +45,16 @@ _CANARY_FILE_KEYS: list[str] = sorted([
     "tax_provision_fy2024_workpaper",
     "perm_temp_differences_fy2025",
     "statutory_rates",
+    # TC-07 files (8 K-1 PDFs + org chart)
+    "tc07_k1_001",
+    "tc07_k1_002",
+    "tc07_k1_003",
+    "tc07_k1_004",
+    "tc07_k1_005",
+    "tc07_k1_006",
+    "tc07_k1_007",
+    "tc07_k1_008",
+    "tc07_entity_org_chart",
 ])
 
 
@@ -91,6 +102,7 @@ def generate(config: Config, output: Path) -> Manifest:
         emit_tc01(model, output, canaries, errors, manifest)
         emit_tc05(model, output, canaries, errors, manifest)
         emit_tc06(model, output, canaries, errors, manifest)
+        emit_tc07(model, output, canaries, errors, manifest)
 
         # ── Emit gold standards ──────────────────────────────────────
         emit_all_golds(
