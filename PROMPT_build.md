@@ -109,6 +109,24 @@ git commit -m "[<id>] <short description of change>"
 
 **Never skip the commit.** If you close a bead without committing, the work is stranded on disk and the next iteration has no record of what changed. If the commit fails (e.g. pre-commit hook rejects it), investigate and fix the underlying issue — do not use `--no-verify`.
 
+### Closing a bug bead as "not reproducible"
+
+Before closing any bug bead with a "cannot reproduce" reason, you **must** run the exact same command path that `loop.sh` uses to reproduce it — not a manual variant against a cached suite in the repo. The `loop.sh` Phase 2 checks regenerate the suite into a fresh tempdir and run the grader against that. A bug that only appears under a fresh generation will look fine if you grade against `test_suite/` that's been sitting in the repo.
+
+Minimum reproduction protocol:
+
+```bash
+rm -rf /tmp/reprocheck
+uv run python generate_test_suite.py --output /tmp/reprocheck
+uv run python scoring/auto_grader.py --self-test --suite-dir /tmp/reprocheck
+```
+
+Rules:
+
+- If the bug is described in terms of grader output (e.g. "TC-XX missing," "ERR-NNN fails"), you must paste the actual output of the above commands into the close reason. Do not paraphrase.
+- If the output matches what you expected (all TCs present, all errors detected), and the bug description claims otherwise, **do not close the bead**. Instead, update the description with the discrepancy you observed and leave it open for a human to reconcile. A false close on a self-test failure is worse than leaving the bead open — it hides a real regression behind an all-green loop.
+- If you cannot reproduce the bug at all (clean output matching the close claim), still paste the output into the close reason so the next reader can verify.
+
 ## Rules
 
 - **One task at a time.** Finish fully before starting another.
