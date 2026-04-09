@@ -26,6 +26,7 @@ from generator.formatters.tc04 import emit_tc04
 from generator.formatters.tc05 import emit_tc05
 from generator.formatters.tc06 import emit_tc06
 from generator.formatters.tc07 import emit_tc07
+from generator.formatters.tc11 import emit_tc11
 from generator.formatters.tc15 import emit_tc15
 from generator.formatters.tc17 import emit_tc17
 from generator.formatters.tc18 import emit_tc18
@@ -87,6 +88,18 @@ _CANARY_FILE_KEYS: list[str] = sorted([
     "tc07_k1_007",
     "tc07_k1_008",
     "tc07_entity_org_chart",
+    # TC-11 files (1 P&L xlsx + 1 adjustments xlsx + 8 contract PDFs + 1 docx)
+    "tc11_monthly_pl",
+    "tc11_mgmt_adjustments",
+    "tc11_contract_001",
+    "tc11_contract_002",
+    "tc11_contract_003",
+    "tc11_contract_004",
+    "tc11_contract_005",
+    "tc11_contract_006",
+    "tc11_contract_007",
+    "tc11_contract_008",
+    "tc11_interview_notes",
     # TC-15 files (3 xlsx + 1 pdf)
     "tc15_historical_financials",
     "tc15_management_projections",
@@ -169,6 +182,7 @@ def generate(config: Config, output: Path) -> Manifest:
         emit_tc05(model, output, canaries, errors, manifest)
         emit_tc06(model, output, canaries, errors, manifest)
         emit_tc07(model, output, canaries, errors, manifest)
+        emit_tc11(model, output, canaries, errors, manifest)
         emit_tc15(model, output, canaries, errors, manifest)
         emit_templates(output, canaries, manifest)
         emit_tc17(model, output, canaries, errors, manifest)
