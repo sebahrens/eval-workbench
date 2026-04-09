@@ -21,6 +21,7 @@ from generator.config import Config, ConfigError, load_config
 from generator.errors import ErrorRegistry
 from generator.formatters.tc01 import emit_tc01
 from generator.formatters.tc02 import emit_tc02
+from generator.formatters.tc04 import emit_tc04
 from generator.formatters.tc05 import emit_tc05
 from generator.formatters.tc06 import emit_tc06
 from generator.formatters.tc07 import emit_tc07
@@ -50,6 +51,23 @@ _CANARY_FILE_KEYS: list[str] = sorted([
     "tax_provision_fy2024_workpaper",
     "perm_temp_differences_fy2025",
     "statutory_rates",
+    # TC-04 files (15 lease PDFs + partial schedule)
+    "tc04_lease_001",
+    "tc04_lease_002",
+    "tc04_lease_003",
+    "tc04_lease_004",
+    "tc04_lease_005",
+    "tc04_lease_006",
+    "tc04_lease_007",
+    "tc04_lease_008",
+    "tc04_lease_009",
+    "tc04_lease_010",
+    "tc04_lease_011",
+    "tc04_lease_012",
+    "tc04_lease_013",
+    "tc04_lease_014",
+    "tc04_lease_015",
+    "tc04_lease_schedule_partial",
     # TC-07 files (8 K-1 PDFs + org chart)
     "tc07_k1_001",
     "tc07_k1_002",
@@ -106,6 +124,7 @@ def generate(config: Config, output: Path) -> Manifest:
         # ── Phase 2: TC formatters ───────────────────────────────────
         emit_tc01(model, output, canaries, errors, manifest)
         emit_tc02(model, output, canaries, errors, manifest)
+        emit_tc04(model, output, canaries, errors, manifest)
         emit_tc05(model, output, canaries, errors, manifest)
         emit_tc06(model, output, canaries, errors, manifest)
         emit_tc07(model, output, canaries, errors, manifest)
