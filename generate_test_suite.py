@@ -26,6 +26,7 @@ from generator.formatters.tc04 import emit_tc04
 from generator.formatters.tc05 import emit_tc05
 from generator.formatters.tc06 import emit_tc06
 from generator.formatters.tc07 import emit_tc07
+from generator.formatters.tc15 import emit_tc15
 from generator.formatters.tc17 import emit_tc17
 from generator.formatters.tc18 import emit_tc18
 from generator.formatters.templates import emit_templates
@@ -86,6 +87,11 @@ _CANARY_FILE_KEYS: list[str] = sorted([
     "tc07_k1_007",
     "tc07_k1_008",
     "tc07_entity_org_chart",
+    # TC-15 files (3 xlsx + 1 pdf)
+    "tc15_historical_financials",
+    "tc15_management_projections",
+    "tc15_comparable_companies",
+    "tc15_industry_overview",
     # TC-17 files (4 docx + 2 xlsx workpaper sections)
     "tc17_executive_summary",
     "tc17_financial_analysis",
@@ -163,6 +169,7 @@ def generate(config: Config, output: Path) -> Manifest:
         emit_tc05(model, output, canaries, errors, manifest)
         emit_tc06(model, output, canaries, errors, manifest)
         emit_tc07(model, output, canaries, errors, manifest)
+        emit_tc15(model, output, canaries, errors, manifest)
         emit_templates(output, canaries, manifest)
         emit_tc17(model, output, canaries, errors, manifest)
         emit_tc18(model, output, canaries, errors, manifest)
