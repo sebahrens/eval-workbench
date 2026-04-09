@@ -8,7 +8,10 @@ Emits:
 from __future__ import annotations
 
 import datetime
+import io
 from pathlib import Path
+from typing import Any
+from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -17,6 +20,24 @@ from fpdf import FPDF
 
 from generator.canaries import CanaryRegistry, embed_canary_docx, embed_canary_pdf_fpdf2
 from generator.manifest import Manifest
+
+_FIXED_ZIP_DT = (2025, 1, 15, 9, 0, 0)
+_FIXED_DATETIME = datetime.datetime(2025, 1, 15, 9, 0, 0)
+
+
+def _save_docx_deterministic(doc: Any, path: str | Path) -> None:
+    """Save a python-docx Document with fixed zip entry timestamps."""
+    path = Path(path)
+    buf = io.BytesIO()
+    doc.save(buf)
+
+    buf.seek(0)
+    with ZipFile(buf, "r") as src, ZipFile(str(path), "w", ZIP_DEFLATED) as dst:
+        for item in src.infolist():
+            info = ZipInfo(item.filename, date_time=_FIXED_ZIP_DT)
+            info.compress_type = item.compress_type
+            dst.writestr(info, src.read(item.filename))
+
 
 # ---------------------------------------------------------------------------
 # Cover page template (docx)
@@ -98,10 +119,12 @@ def _write_cover_page(output_dir: Path, canaries: CanaryRegistry, manifest: Mani
     run.font.bold = True
     run.font.color.rgb = RGBColor(0xCC, 0x00, 0x00)
 
-    # -- Save
+    # -- Save (deterministic)
+    doc.core_properties.created = _FIXED_DATETIME
+    doc.core_properties.modified = _FIXED_DATETIME
     path = output_dir / "templates" / "deliverable_cover_page.docx"
     path.parent.mkdir(parents=True, exist_ok=True)
-    doc.save(str(path))
+    _save_docx_deterministic(doc, path)
 
     manifest.register(
         "templates/deliverable_cover_page.docx",
