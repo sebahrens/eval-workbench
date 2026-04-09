@@ -21,6 +21,7 @@ from generator.config import Config, ConfigError, load_config
 from generator.errors import ErrorRegistry
 from generator.formatters.tc01 import emit_tc01
 from generator.formatters.tc02 import emit_tc02
+from generator.formatters.tc03 import emit_tc03
 from generator.formatters.tc04 import emit_tc04
 from generator.formatters.tc05 import emit_tc05
 from generator.formatters.tc06 import emit_tc06
@@ -42,6 +43,10 @@ _CANARY_FILE_KEYS: list[str] = sorted([
     "ar_confirmations_summary",
     "allowance_analysis",
     "workpaper_memo_template",
+    # TC-03 files
+    "tc03_revenue_by_product",
+    "tc03_industry_benchmark",
+    "tc03_mgmt_rep_letter",
     # TC-02 files
     "bank_confirmation_fy2025",
     "bank_statement_dec2025",
@@ -124,6 +129,7 @@ def generate(config: Config, output: Path) -> Manifest:
         # ── Phase 2: TC formatters ───────────────────────────────────
         emit_tc01(model, output, canaries, errors, manifest)
         emit_tc02(model, output, canaries, errors, manifest)
+        emit_tc03(model, output, canaries, errors, manifest)
         emit_tc04(model, output, canaries, errors, manifest)
         emit_tc05(model, output, canaries, errors, manifest)
         emit_tc06(model, output, canaries, errors, manifest)
