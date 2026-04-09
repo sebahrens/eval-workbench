@@ -27,6 +27,7 @@ from generator.formatters.tc05 import emit_tc05
 from generator.formatters.tc06 import emit_tc06
 from generator.formatters.tc07 import emit_tc07
 from generator.formatters.tc11 import emit_tc11
+from generator.formatters.tc12 import emit_tc12
 from generator.formatters.tc15 import emit_tc15
 from generator.formatters.tc17 import emit_tc17
 from generator.formatters.tc18 import emit_tc18
@@ -100,6 +101,41 @@ _CANARY_FILE_KEYS: list[str] = sorted([
     "tc11_contract_007",
     "tc11_contract_008",
     "tc11_interview_notes",
+    # TC-12 data room files (32) + DD checklist (1)
+    "tc12_articles_of_incorporation",
+    "tc12_audited_financials_fy2023",
+    "tc12_audited_financials_fy2024",
+    "tc12_benefits_summary",
+    "tc12_board_minutes_2024",
+    "tc12_board_minutes_2025",
+    "tc12_budget_fy2025",
+    "tc12_ceo_employment_agreement",
+    "tc12_cfo_employment_agreement",
+    "tc12_cto_employment_agreement",
+    "tc12_customer_agreement_acme",
+    "tc12_customer_agreement_globex",
+    "tc12_customer_list_with_revenue",
+    "tc12_bylaws",
+    "tc12_dd_checklist",
+    "tc12_debt_schedule",
+    "tc12_employee_census",
+    "tc12_equipment_list",
+    "tc12_facility_leases",
+    "tc12_federal_returns_fy2023",
+    "tc12_federal_returns_fy2024",
+    "tc12_insurance_policies_summary",
+    "tc12_ip_assignment_agreements",
+    "tc12_it_infrastructure_overview",
+    "tc12_management_financials_fy2025",
+    "tc12_org_chart",
+    "tc12_org_chart_detailed",
+    "tc12_patent_portfolio",
+    "tc12_pending_litigation_summary",
+    "tc12_software_licenses",
+    "tc12_state_returns_summary",
+    "tc12_supplier_agreement_initech",
+    "tc12_tax_notices",
+    "tc12_vendor_list",
     # TC-15 files (3 xlsx + 1 pdf)
     "tc15_historical_financials",
     "tc15_management_projections",
@@ -183,6 +219,7 @@ def generate(config: Config, output: Path) -> Manifest:
         emit_tc06(model, output, canaries, errors, manifest)
         emit_tc07(model, output, canaries, errors, manifest)
         emit_tc11(model, output, canaries, errors, manifest)
+        emit_tc12(model, output, canaries, errors, manifest)
         emit_tc15(model, output, canaries, errors, manifest)
         emit_templates(output, canaries, manifest)
         emit_tc17(model, output, canaries, errors, manifest)
