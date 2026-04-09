@@ -13,7 +13,10 @@ Emits a 32-file data room across 7 categories plus a 65-item DD checklist:
   │   └── 07_technology/  (1 PDF + 1 XLSX + 1 DOCX)
   └── dd_checklist_standard.docx
 
-Gold standard red flags (no planted ERR-xxx errors; the test is judgment):
+Planted errors:
+- ERR-021 (missing_data) in employee_census.xlsx — blank salary cell
+
+Gold standard red flags:
 - Pending litigation: Henderson v. Cascade PC, $2.5M exposure
 - CEO golden parachute: 3× salary ($975K) upon change of control
 - Acme change-of-control termination clause (~18% of revenue)
@@ -56,7 +59,7 @@ from generator.canaries import (
     embed_canary_docx,
     embed_canary_xlsx,
 )
-from generator.errors import ErrorRegistry
+from generator.errors import ErrorRegistry, PlantedError, missing_data
 from generator.golds.framework import GoldStandard, register_gold
 from generator.manifest import Manifest
 from generator.model.ar import CUSTOMERS as AR_CUSTOMERS
@@ -1256,6 +1259,7 @@ def _write_employee_census_xlsx(
     model: CascadeModel,
     output_dir: Path,
     canaries: CanaryRegistry,
+    errors: ErrorRegistry,
     manifest: Manifest,
 ) -> None:
     file_key = "tc12_employee_census"
@@ -1277,6 +1281,7 @@ def _write_employee_census_xlsx(
 
     # Sort employees deterministically
     employees = sorted(model.employees, key=lambda e: e.employee_id)
+    err021_target_idx = 4  # 5th employee in sorted order
     for r, emp in enumerate(employees, 2):
         ws.cell(row=r, column=1, value=emp.employee_id)
         ws.cell(row=r, column=2, value=emp.name)
@@ -1284,7 +1289,26 @@ def _write_employee_census_xlsx(
         ws.cell(row=r, column=4, value=emp.department)
         ws.cell(row=r, column=5, value=emp.title)
         ws.cell(row=r, column=6, value=emp.hire_date.isoformat())
-        ws.cell(row=r, column=7, value=emp.annual_salary).number_format = _MONEY_FMT
+        if (r - 2) == err021_target_idx:
+            correct_salary = emp.annual_salary
+            ws.cell(row=r, column=7, value=missing_data())  # blank cell
+            errors.add(PlantedError(
+                error_id="ERR-021",
+                file=f"{_DR}/04_hr/employee_census.xlsx",
+                location=(
+                    f"Sheet 'Employee Census', Row {r}, Column G (Annual Salary) "
+                    f"for employee {emp.name} ({emp.employee_id})"
+                ),
+                type="missing_data",
+                description=(
+                    f"Employee salary is blank for {emp.name} ({emp.employee_id}) "
+                    f"instead of ${correct_salary:,}"
+                ),
+                severity="immaterial",
+                which_test_cases_should_catch=["TC-12"],
+            ))
+        else:
+            ws.cell(row=r, column=7, value=emp.annual_salary).number_format = _MONEY_FMT
         ws.cell(row=r, column=8, value=emp.state)
         status = "Terminated" if emp.termination_date else "Active"
         ws.cell(row=r, column=9, value=status)
@@ -2260,7 +2284,7 @@ def emit_tc12(
     _write_insurance_policies_pdf(output_dir, canaries, manifest)
 
     # 04_hr
-    _write_employee_census_xlsx(model, output_dir, canaries, manifest)
+    _write_employee_census_xlsx(model, output_dir, canaries, errors, manifest)
     _write_benefits_summary_pdf(output_dir, canaries, manifest)
     _write_key_employee_agreement_pdf(
         output_dir, canaries, manifest, 0, "tc12_ceo_employment_agreement",

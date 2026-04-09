@@ -24,8 +24,9 @@ Gold standard (from prompt.md):
   deferrals.
 
 Uses the canonical model for AR/AP aging and balance sheet data.
-No planted ERR-xxx errors — the adversarial element is the covenant
-breach identification and deferral analysis.
+Planted errors:
+  ERR-008 (mismatched_total) — AP aging total row omits one invoice ($1,800 delta).
+  ERR-024 (rounding_discrepancy) — Balance-sheet Total Current Assets off by $1 vs. sum.
 """
 
 from __future__ import annotations
@@ -42,7 +43,12 @@ from docx import Document
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 from generator.canaries import CanaryRegistry, embed_canary_docx, embed_canary_xlsx
-from generator.errors import ErrorRegistry
+from generator.errors import (
+    ErrorRegistry,
+    PlantedError,
+    mismatch_total,
+    rounding_discrepancy,
+)
 from generator.golds.framework import GoldStandard, register_gold
 from generator.manifest import Manifest
 from generator.model.build import CascadeModel
@@ -452,6 +458,7 @@ def _write_balance_sheet(
     model: CascadeModel,
     output_dir: Path,
     canaries: CanaryRegistry,
+    errors: ErrorRegistry,
     manifest: Manifest,
 ) -> None:
     """Write balance_sheet_current.xlsx — the starting point for cash flow."""
@@ -503,10 +510,39 @@ def _write_balance_sheet(
         _style_data_cell(ws.cell(row=row, column=2))
         row += 1
 
-    total_assets = _OPENING_CASH + total_ar + sum(
+    other_current = sum(
         _whole_dollars(v) for k, v in bs.assets.items()
         if k not in ("1010", "1100", "1150")
     )
+    correct_total_current = _OPENING_CASH + total_ar + other_current
+
+    # ERR-024: rounding discrepancy on Total Current Assets
+    wrong_total_current = int(rounding_discrepancy(
+        float(correct_total_current) + 0.6,  # force a $1 rounding difference
+        decimal_places=0,
+        direction="up",
+    ))
+
+    row += 1
+    total_current_row = row
+    ws.cell(row=row, column=1, value="Total Current Assets").font = Font(bold=True)
+    ws.cell(row=row, column=2, value=wrong_total_current)
+    _style_data_cell(ws.cell(row=row, column=2))
+
+    errors.add(PlantedError(
+        error_id="ERR-024",
+        file=f"{_INPUT_DIR}/balance_sheet_current.xlsx",
+        location=f"Sheet 'Balance Sheet', Row {total_current_row}, Column B (Total Current Assets)",
+        type="rounding_discrepancy",
+        description=(
+            f"Total Current Assets shows ${wrong_total_current:,} "
+            f"instead of ${correct_total_current:,}"
+        ),
+        severity="immaterial",
+        which_test_cases_should_catch=["TC-14"],
+    ))
+
+    total_assets = correct_total_current
     row += 1
     ws.cell(row=row, column=1, value="TOTAL ASSETS").font = Font(bold=True)
     ws.cell(row=row, column=2, value=total_assets)
@@ -628,6 +664,7 @@ def _write_ap_aging(
     model: CascadeModel,
     output_dir: Path,
     canaries: CanaryRegistry,
+    errors: ErrorRegistry,
     manifest: Manifest,
 ) -> None:
     """Write ap_aging_report.xlsx — AP by vendor with due-date weeks."""
@@ -663,6 +700,31 @@ def _write_ap_aging(
         _style_data_cell(ws.cell(row=i, column=8))
         ws.cell(row=i, column=9, value=f"Net {r['payment_terms']}")
         ws.cell(row=i, column=10, value=r["due_week"])
+
+    # ERR-008: AP aging total row — omit one invoice from the total ($1,800 delta)
+    totals_row = len(rows) + 2  # header row + data rows + 1
+    correct_ap_total = sum(r["total"] for r in rows)
+    _ERR008_DELTA = -1_800  # as if one small invoice was omitted
+    wrong_ap_total = int(mismatch_total(correct_ap_total, _ERR008_DELTA))
+
+    ws.cell(row=totals_row, column=1, value="TOTAL")
+    ws.cell(row=totals_row, column=1).font = Font(bold=True)
+    ws.cell(row=totals_row, column=8, value=wrong_ap_total)
+    ws.cell(row=totals_row, column=8).font = Font(bold=True)
+    _style_data_cell(ws.cell(row=totals_row, column=8))
+
+    errors.add(PlantedError(
+        error_id="ERR-008",
+        file=f"{_INPUT_DIR}/ap_aging_report.xlsx",
+        location=f"Sheet 'AP Aging', Row {totals_row}, Column H (Total AP)",
+        type="mismatched_total",
+        description=(
+            f"AP aging total shows ${wrong_ap_total:,} "
+            f"instead of ${correct_ap_total:,}"
+        ),
+        severity="material",
+        which_test_cases_should_catch=["TC-14"],
+    ))
 
     for col in range(1, len(headers) + 1):
         ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = 16
@@ -902,7 +964,10 @@ def _tc14_gold(
             "read_ap_aging": canaries.canary_for("tc14_ap_aging_report"),
             "read_expense_schedule": canaries.canary_for("tc14_committed_expenses"),
         },
-        error_detection={},  # No planted errors for TC-14
+        error_detection={
+            "ERR-008": "AP aging total row mismatched — one invoice omitted from the sum",
+            "ERR-024": "Balance sheet Total Current Assets shows rounding discrepancy vs. component sum",
+        },
         scoring_hints={
             "correctness": (
                 "Cash trough at Week 8 = $1,340,000; deferral trough = $2,155,000 "
@@ -941,9 +1006,9 @@ def emit_tc14(
     manifest: Manifest,
 ) -> None:
     """Write all TC-14 files to *output_dir*."""
-    _write_balance_sheet(model, output_dir, canaries, manifest)
+    _write_balance_sheet(model, output_dir, canaries, errors, manifest)
     _write_ar_aging(model, output_dir, canaries, manifest)
-    _write_ap_aging(model, output_dir, canaries, manifest)
+    _write_ap_aging(model, output_dir, canaries, errors, manifest)
     _write_expenses_docx(output_dir, canaries, manifest)
     _write_prompt(output_dir)
     _write_expected_behavior(output_dir)

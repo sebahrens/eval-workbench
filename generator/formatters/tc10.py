@@ -13,8 +13,9 @@ Emits:
 - test_cases/TC-10/expected_behavior.md
 - gold_standards/TC-10_gold.json
 
-No planted ERR-xxx errors — the adversarial element is distinguishing
-"$0" from blank and flagging TX margin tax / WA B&O tax / WA nexus.
+Planted errors:
+- ERR-003 (transposed_digits): one state's sales factor has transposed digits
+- ERR-023 (rounding_discrepancy): total expenses shows a rounding discrepancy
 Uses the canonical model — never hardcodes numbers.
 """
 
@@ -31,7 +32,12 @@ import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 from generator.canaries import CanaryRegistry, embed_canary_docx, embed_canary_xlsx
-from generator.errors import ErrorRegistry
+from generator.errors import (
+    ErrorRegistry,
+    PlantedError,
+    rounding_discrepancy,
+    transpose_digits,
+)
 from generator.golds.framework import GoldStandard, register_gold
 from generator.manifest import Manifest
 from generator.model.build import CascadeModel
@@ -407,6 +413,7 @@ def _write_consolidated_pl(
     model: CascadeModel,
     output_dir: Path,
     canaries: CanaryRegistry,
+    errors: ErrorRegistry,
     manifest: Manifest,
 ) -> None:
     """Write consolidated_pl_fy2025.xlsx — consolidated income statement."""
@@ -458,8 +465,26 @@ def _write_consolidated_pl(
     # Gross profit
     _write_line("Gross Profit", is_stmt.gross_profit, bold=True)
 
-    # Operating expenses
-    _write_line("Total Operating Expenses", is_stmt.total_opex, indent=1)
+    # Operating expenses — ERR-023: rounding discrepancy
+    # Introduce a fractional amount so truncation vs rounding produces a $1 diff
+    correct_opex = _whole_dollars(is_stmt.total_opex)
+    # Add $0.60 so truncation (down) yields correct_opex, but the "shown" value
+    # uses ROUND_HALF_UP yielding correct_opex + 1
+    nudged_opex = float(correct_opex) + 0.6
+    corrupt_opex = int(rounding_discrepancy(nudged_opex, decimal_places=0, direction="up"))
+    errors.add(PlantedError(
+        error_id="ERR-023",
+        file=f"{_INPUT_DIR}/consolidated_pl_fy2025.xlsx",
+        location="Sheet 'Income Statement', Row 'Total Operating Expenses'",
+        type="rounding_discrepancy",
+        description=(
+            f"Total Operating Expenses shows ${corrupt_opex:,} "
+            f"instead of ${correct_opex:,}"
+        ),
+        severity="immaterial",
+        which_test_cases_should_catch=["TC-10"],
+    ))
+    _write_line("Total Operating Expenses", Decimal(corrupt_opex), indent=1)
 
     # Operating income
     _write_line("Operating Income", is_stmt.operating_income, bold=True)
@@ -489,6 +514,7 @@ def _write_state_factors(
     model: CascadeModel,
     output_dir: Path,
     canaries: CanaryRegistry,
+    errors: ErrorRegistry,
     manifest: Manifest,
 ) -> dict[str, dict[str, Decimal | None]]:
     """Write state_factors.xlsx and return the computed factors dict."""
@@ -518,6 +544,37 @@ def _write_state_factors(
     ws.column_dimensions["C"].width = 16
     ws.column_dimensions["D"].width = 16
 
+    # ── ERR-003: Transpose digits in IL sales factor ────────────────
+    _ERR003_STATE = "IL"
+    correct_sales = factors[_ERR003_STATE]["sales"]
+    assert correct_sales is not None
+    # Work with integer representation (factor * 10000) to transpose digits
+    correct_int = int(correct_sales * 10000)
+    # Try several position pairs until we find one with different digits
+    for _p1, _p2 in [(-1, -2), (-2, -3), (0, 1), (1, 2)]:
+        try:
+            corrupt_int = transpose_digits(correct_int, pos1=_p1, pos2=_p2)
+            break
+        except ValueError:
+            continue
+    else:
+        raise ValueError(f"Cannot transpose any digit pair in {correct_int}")
+    corrupt_sales = Decimal(corrupt_int) / Decimal(10000)
+    corrupt_sales_float = float(corrupt_sales)
+    correct_sales_float = float(correct_sales)
+    errors.add(PlantedError(
+        error_id="ERR-003",
+        file=f"{_INPUT_DIR}/state_factors.xlsx",
+        location=f"Sheet 'State Factors', {_ERR003_STATE} Sales Factor",
+        type="transposed_digits",
+        description=(
+            f"{_ERR003_STATE} sales apportionment factor shows "
+            f"{corrupt_sales_float} instead of {correct_sales_float}"
+        ),
+        severity="material",
+        which_test_cases_should_catch=["TC-10"],
+    ))
+
     # State order per spec
     state_order = ["OR", "TX", "IL", "CA", "WA", "NY"]
     for i, state in enumerate(state_order):
@@ -527,10 +584,11 @@ def _write_state_factors(
         cell_a = ws.cell(row=row, column=1, value=state)
         _style_data_cell(cell_a)
 
-        # Sales factor
+        # Sales factor — use corrupted value for ERR-003 target state
         cell_b = ws.cell(row=row, column=2)
         if sf["sales"] is not None:
-            cell_b.value = float(sf["sales"])
+            display_sales = float(corrupt_sales) if state == _ERR003_STATE else float(sf["sales"])
+            cell_b.value = display_sales
             _style_data_cell(cell_b, _PCT_FMT)
         else:
             # NY: leave blank (None → empty cell)
@@ -856,7 +914,10 @@ def _tc10_gold(
             "read_state_factors": canaries.canary_for("tc10_state_factors"),
             "read_apportionment_rules": canaries.canary_for("tc10_apportionment_rules"),
         },
-        error_detection={},  # No planted errors for TC-10
+        error_detection={
+            "ERR-003": "IL sales factor has transposed digits",
+            "ERR-023": "Total Operating Expenses has a rounding discrepancy",
+        },
         scoring_hints={
             "correctness": (
                 "Apportioned income correct for OR and IL (single sales factor); "
@@ -893,8 +954,8 @@ def emit_tc10(
     manifest: Manifest,
 ) -> None:
     """Write all TC-10 files to *output_dir*."""
-    _write_consolidated_pl(model, output_dir, canaries, manifest)
-    _write_state_factors(model, output_dir, canaries, manifest)
+    _write_consolidated_pl(model, output_dir, canaries, errors, manifest)
+    _write_state_factors(model, output_dir, canaries, errors, manifest)
     _write_apportionment_rules(output_dir, canaries, manifest)
     _write_prompt(output_dir)
     _write_expected_behavior(output_dir)

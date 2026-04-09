@@ -43,7 +43,7 @@ from generator.canaries import (
     embed_canary_csv_comment,
     embed_canary_xlsx,
 )
-from generator.errors import ErrorRegistry
+from generator.errors import ErrorRegistry, PlantedError, mismatch_total, transpose_digits
 from generator.golds.framework import GoldStandard, register_gold
 from generator.manifest import Manifest
 from generator.model.bank import (
@@ -103,6 +103,7 @@ def _write_bank_csv(
     model: CascadeModel,
     output_dir: Path,
     canaries: CanaryRegistry,
+    errors: ErrorRegistry,
     manifest: Manifest,
 ) -> None:
     """Write bank_statement_dec2025.csv — 340 transactions."""
@@ -116,6 +117,23 @@ def _write_bank_csv(
     path = output_dir / _INPUT_DIR / "bank_statement_dec2025.csv"
     path.parent.mkdir(parents=True, exist_ok=True)
 
+    # ERR-002: transpose digits in the 5th transaction's amount
+    err_txn_idx = 4  # 0-based → 5th transaction
+    correct_amount = bank.bank_transactions[err_txn_idx].amount
+    corrupt_amount = Decimal(str(transpose_digits(int(correct_amount))))
+    errors.add(PlantedError(
+        error_id="ERR-002",
+        file=f"{_INPUT_DIR}/bank_statement_dec2025.csv",
+        location="Row 6 (transaction 5), Amount column",
+        type="transposed_digits",
+        description=(
+            f"Bank transaction amount shows ${int(corrupt_amount):,} "
+            f"instead of ${int(correct_amount):,}"
+        ),
+        severity="material",
+        which_test_cases_should_catch=["TC-02"],
+    ))
+
     lines: list[str] = [canary_line]
     # Header comment with bank info
     lines.append("# First National Bank of Oregon — Account Statement\n")
@@ -125,9 +143,10 @@ def _write_bank_csv(
     lines.append("#\n")
     lines.append("Date,Description,Amount,Running Balance\n")
 
-    for txn in bank.bank_transactions:
+    for i, txn in enumerate(bank.bank_transactions):
         date_str = txn.date.strftime("%m/%d/%Y")
-        amt_str = _fmt_amount(txn.amount)
+        amt = corrupt_amount if i == err_txn_idx else txn.amount
+        amt_str = _fmt_amount(amt)
         bal_str = _fmt_amount(txn.running_balance)
         # Escape description if it contains commas
         desc = txn.description
@@ -157,6 +176,7 @@ def _write_gl_cash_xlsx(
     model: CascadeModel,
     output_dir: Path,
     canaries: CanaryRegistry,
+    errors: ErrorRegistry,
     manifest: Manifest,
 ) -> None:
     """Write cascade_gl_cash_dec2025.xlsx — GL cash account detail."""
@@ -231,9 +251,25 @@ def _write_gl_cash_xlsx(
         row += 1
 
     # Ending balance row
+    # ERR-004: mismatched total — ending balance off by ~$3,500 (one omitted entry)
+    correct_gl_ending = int(bank.gl_ending_balance)
+    corrupt_gl_ending = int(mismatch_total(correct_gl_ending, -3_500))
+    errors.add(PlantedError(
+        error_id="ERR-004",
+        file=f"{_INPUT_DIR}/cascade_gl_cash_dec2025.xlsx",
+        location="Sheet 'Cash Detail - 1010', Ending Balance row, column F",
+        type="mismatched_total",
+        description=(
+            f"GL ending balance shows ${corrupt_gl_ending:,} "
+            f"instead of ${correct_gl_ending:,}"
+        ),
+        severity="material",
+        which_test_cases_should_catch=["TC-02"],
+    ))
+
     row += 1
     ws.cell(row=row, column=1, value="Ending Balance").font = Font(bold=True, size=10)
-    end_cell = ws.cell(row=row, column=6, value=int(bank.gl_ending_balance))
+    end_cell = ws.cell(row=row, column=6, value=corrupt_gl_ending)
     end_cell.font = Font(bold=True, size=10)
     end_cell.number_format = money_fmt
     # Double underline
@@ -572,8 +608,8 @@ def emit_tc02(
     manifest: Manifest,
 ) -> None:
     """Write all TC-02 files to *output_dir*."""
-    _write_bank_csv(model, output_dir, canaries, manifest)
-    _write_gl_cash_xlsx(model, output_dir, canaries, manifest)
+    _write_bank_csv(model, output_dir, canaries, errors, manifest)
+    _write_gl_cash_xlsx(model, output_dir, canaries, errors, manifest)
     _write_bank_confirmation_pdf(model, output_dir, canaries, manifest)
     _write_prompt(output_dir)
     _write_expected_behavior(output_dir)

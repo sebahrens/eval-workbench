@@ -11,8 +11,11 @@ Emits:
 - test_cases/TC-03/expected_behavior.md
 - gold_standards/TC-03_gold.json
 
-No planted errors from error_registry — the deliberate discrepancy
-(management claims ~8%, actual 9.2%) is part of the gold standard.
+Planted errors:
+- ERR-009 (stale_data): industry benchmark PDF shows FY2024 growth rate
+  where FY2025's should be (Industrial Manufacturing sector, page 4)
+- ERR-018 (classification_error): one revenue row labels Specialty Coatings
+  as Advanced Composites (March 2025)
 Uses the canonical model — never hardcodes numbers.
 """
 
@@ -44,7 +47,12 @@ from reportlab.platypus import (
 )
 
 from generator.canaries import CanaryRegistry, embed_canary_docx, embed_canary_xlsx
-from generator.errors import ErrorRegistry
+from generator.errors import (
+    ErrorRegistry,
+    PlantedError,
+    classification_error,
+    stale_data,
+)
 from generator.golds.framework import GoldStandard, register_gold
 from generator.manifest import Manifest
 from generator.model.build import CascadeModel
@@ -172,6 +180,7 @@ def _write_revenue_xlsx(
     model: CascadeModel,
     output_dir: Path,
     canaries: CanaryRegistry,
+    errors: ErrorRegistry,
     manifest: Manifest,
 ) -> None:
     """Write revenue_by_product_monthly_fy2024_fy2025.xlsx."""
@@ -251,9 +260,32 @@ def _write_revenue_xlsx(
 
                 month_name = datetime.date(year, month, 1).strftime("%B")
 
+                # ERR-018: classification_error — misclassify one row
+                display_pl_name = pl_name
+                if (year == 2025 and month == 3
+                        and pl_name == "Specialty Coatings"):
+                    correct_pl = "Specialty Coatings"
+                    wrong_pl = "Advanced Composites"
+                    display_pl_name = classification_error(correct_pl, wrong_pl)
+                    errors.add(PlantedError(
+                        error_id="ERR-018",
+                        file=f"{_INPUT_DIR}/revenue_by_product_monthly_fy2024_fy2025.xlsx",
+                        location=(
+                            "Sheet 'Monthly Revenue', March 2025 row for "
+                            "Specialty Coatings, Column C (Product Line)"
+                        ),
+                        type="classification_error",
+                        description=(
+                            f"shows {wrong_pl} instead of {correct_pl} for "
+                            "March 2025 revenue line item"
+                        ),
+                        severity="immaterial",
+                        which_test_cases_should_catch=["TC-03"],
+                    ))
+
                 ws.cell(row=row, column=1, value=year)
                 ws.cell(row=row, column=2, value=month_name)
-                ws.cell(row=row, column=3, value=pl_name)
+                ws.cell(row=row, column=3, value=display_pl_name)
                 ws.cell(row=row, column=4, value=entity_code)
 
                 rev_cell = ws.cell(row=row, column=5, value=_whole_dollars(revenue))
@@ -385,6 +417,7 @@ def _write_revenue_xlsx(
 def _write_benchmark_pdf(
     output_dir: Path,
     canaries: CanaryRegistry,
+    errors: ErrorRegistry,
     manifest: Manifest,
 ) -> None:
     """Write industry_benchmark_report.pdf — 12-page synthetic report.
@@ -527,9 +560,24 @@ def _write_benchmark_pdf(
 
     # Benchmark table — this is page 4 data
     bm_mfg = _INDUSTRY_BENCHMARKS["Industrial Manufacturing"]
+    # ERR-009: stale_data — show FY2024's growth rate where FY2025's should be
+    correct_mfg_growth = bm_mfg["growth_rate"]  # "4.2%"
+    stale_mfg_growth = stale_data("3.8%")        # FY2024 value
+    errors.add(PlantedError(
+        error_id="ERR-009",
+        file=f"{_INPUT_DIR}/industry_benchmark_report.pdf",
+        location="Page 4, Industrial Manufacturing table, 'Revenue Growth (YoY)' row, '2025 Value' column",
+        type="stale_data",
+        description=(
+            f"shows {stale_mfg_growth} instead of {correct_mfg_growth} for "
+            "Industrial Manufacturing 2025 revenue growth"
+        ),
+        severity="immaterial",
+        which_test_cases_should_catch=["TC-03"],
+    ))
     mfg_data = [
         ["Metric", "2025 Value", "2024 Value", "Trend"],
-        ["Revenue Growth (YoY)", bm_mfg["growth_rate"], "3.8%", "Improving"],
+        ["Revenue Growth (YoY)", stale_mfg_growth, "3.8%", "Improving"],
         ["Gross Margin (Median)", "33%", "32%", "Stable"],
         ["Gross Margin (Range)", bm_mfg["margin_range"], "27%–36%", "Widening"],
         ["Market Size (US)", bm_mfg["market_size"], "$136B", "Growing"],
@@ -1334,8 +1382,8 @@ def emit_tc03(
     manifest: Manifest,
 ) -> None:
     """Emit all TC-03 files."""
-    _write_revenue_xlsx(model, output_dir, canaries, manifest)
-    _write_benchmark_pdf(output_dir, canaries, manifest)
+    _write_revenue_xlsx(model, output_dir, canaries, errors, manifest)
+    _write_benchmark_pdf(output_dir, canaries, errors, manifest)
     _write_mgmt_rep_letter(model, output_dir, canaries, manifest)
     _write_prompt(output_dir)
     _write_expected_behavior(output_dir)

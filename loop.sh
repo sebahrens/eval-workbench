@@ -274,21 +274,21 @@ while true; do
                 echo "  ⚠ generate_test_suite.py failed to run (exits $GEN1_EXIT, $GEN2_EXIT)"
                 DETERM_EXIT=1
             fi
+            # Auto-grader self-test (reuses $RUN1 before cleanup)
+            if [ -f "$PROJECT_DIR/scoring/auto_grader.py" ]; then
+                (cd "$PROJECT_DIR" && uv run python scoring/auto_grader.py --self-test --suite-dir "$RUN1" 2>&1 | tail -20)
+                GRADER_EXIT=$?
+                if [ $GRADER_EXIT -ne 0 ]; then
+                    echo "  ⚠ auto_grader self-test failed — gold standards do not pass their own tests"
+                fi
+            else
+                echo "  (skipping auto_grader self-test — not yet implemented)"
+                GRADER_EXIT=0
+            fi
             rm -rf "$RUN1" "$RUN2"
         else
             echo "  (skipping determinism smoke test — generate_test_suite.py not yet implemented)"
             DETERM_EXIT=0
-        fi
-
-        # Auto-grader self-test: gold standards must score 3/3/3/3/3 against themselves
-        if [ -f "$PROJECT_DIR/scoring/auto_grader.py" ] && [ -d "$PROJECT_DIR/gold_standards" ]; then
-            (cd "$PROJECT_DIR" && uv run python scoring/auto_grader.py --self-test 2>&1 | tail -20)
-            GRADER_EXIT=$?
-            if [ $GRADER_EXIT -ne 0 ]; then
-                echo "  ⚠ auto_grader self-test failed — gold standards do not pass their own tests"
-            fi
-        else
-            echo "  (skipping auto_grader self-test — not yet implemented)"
             GRADER_EXIT=0
         fi
 

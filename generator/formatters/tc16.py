@@ -19,7 +19,7 @@ Gold standard (from prompt.md):
   Total engagement = $458,750.
   All merge fields correctly populated. Template formatting preserved.
 
-No planted errors for this test case (Routine difficulty).
+One planted error (ERR-013): formula_error in fee_schedule.xlsx.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ from docx import Document
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 from generator.canaries import CanaryRegistry, embed_canary_docx, embed_canary_xlsx
-from generator.errors import ErrorRegistry
+from generator.errors import ErrorRegistry, PlantedError, formula_error
 from generator.golds.framework import GoldStandard, register_gold
 from generator.manifest import Manifest
 from generator.model.build import CascadeModel
@@ -257,6 +257,7 @@ def _write_client_profile(
 def _write_fee_schedule(
     output_dir: Path,
     canaries: CanaryRegistry,
+    errors: ErrorRegistry,
     manifest: Manifest,
 ) -> None:
     """Create test_cases/TC-16/input_files/fee_schedule.xlsx.
@@ -372,6 +373,76 @@ def _write_fee_schedule(
         "For a group with 4 entities (1 parent + 3 subsidiaries), "
         "the adder is applied 3 times."
     )).font = _DATA_FONT
+
+    # -- Cascade Industries fee summary (pre-computed for convenience)
+    # ERR-013: The audit total omits the IPO complexity multiplier (1.15x).
+    summary_start = adder_start + 3
+    ws.cell(row=summary_start, column=1, value="Cascade Industries — Engagement Fee Summary").font = Font(
+        name="Calibri", size=12, bold=True,
+    )
+
+    summary_headers = ["Service Line", "Base Fee", "Adjustments", "Total Fee"]
+    for col, h in enumerate(summary_headers, start=1):
+        cell = ws.cell(row=summary_start + 1, column=col, value=h)
+        cell.fill = _HEADER_FILL
+        cell.font = _HEADER_FONT
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border = _THIN_BORDER
+
+    # Correct audit total = 285,000 * 1.15 = 327,750
+    # Wrong audit total   = 285,000 * 1.00 = 285,000  (missing IPO multiplier)
+    correct_audit_total = int(_AUDIT_BASE_FEE * _IPO_COMPLEXITY_MULTIPLIER)  # 327,750
+    wrong_audit_total = int(formula_error(correct_audit_total, int(_AUDIT_BASE_FEE)))  # 285,000
+
+    audit_row = summary_start + 2
+    ws.cell(row=audit_row, column=1, value="Audit").font = _DATA_FONT
+    c = ws.cell(row=audit_row, column=2, value=int(_AUDIT_BASE_FEE))
+    c.font = _DATA_FONT
+    c.number_format = _CURRENCY_FMT
+    ws.cell(row=audit_row, column=3, value="IPO Readiness 1.15x").font = _DATA_FONT
+    c = ws.cell(row=audit_row, column=4, value=wrong_audit_total)
+    c.font = _BOLD_FONT
+    c.number_format = _CURRENCY_FMT
+    for col in range(1, 5):
+        ws.cell(row=audit_row, column=col).border = _THIN_BORDER
+
+    tax_total = int(_TAX_FEE)  # 131,000 — correct
+    tax_row = summary_start + 3
+    ws.cell(row=tax_row, column=1, value="Tax — Federal & State").font = _DATA_FONT
+    c = ws.cell(row=tax_row, column=2, value=int(_TAX_BASE_FEE))
+    c.font = _DATA_FONT
+    c.number_format = _CURRENCY_FMT
+    ws.cell(row=tax_row, column=3, value=f"Per-entity adder × {_ADDITIONAL_ENTITIES}").font = _DATA_FONT
+    c = ws.cell(row=tax_row, column=4, value=tax_total)
+    c.font = _BOLD_FONT
+    c.number_format = _CURRENCY_FMT
+    for col in range(1, 5):
+        ws.cell(row=tax_row, column=col).border = _THIN_BORDER
+
+    total_row = summary_start + 4
+    wrong_total = wrong_audit_total + tax_total  # 285,000 + 131,000 = 416,000
+    _ = correct_audit_total + tax_total  # 327,750 + 131,000 = 458,750 (correct, not written)
+    ws.cell(row=total_row, column=1, value="Total Engagement Fee").font = _BOLD_FONT
+    c = ws.cell(row=total_row, column=4, value=wrong_total)
+    c.font = Font(name="Calibri", size=11, bold=True, color="1A3C6E")
+    c.number_format = _CURRENCY_FMT
+    for col in range(1, 5):
+        ws.cell(row=total_row, column=col).border = _THIN_BORDER
+
+    # Register planted error
+    errors.add(PlantedError(
+        error_id="ERR-013",
+        file=f"{_INPUT_DIR}/fee_schedule.xlsx",
+        location="Sheet 'Fee Schedule', Cascade Industries Fee Summary, Audit Total Fee cell",
+        type="formula_error",
+        description=(
+            f"Audit total fee shows ${wrong_audit_total:,} instead of "
+            f"${correct_audit_total:,} — the IPO complexity multiplier "
+            f"(1.15x) was not applied to the base fee"
+        ),
+        severity="material",
+        which_test_cases_should_catch=["TC-16"],
+    ))
 
     # -- Column widths
     ws.column_dimensions["A"].width = 28
@@ -550,7 +621,12 @@ def _tc16_gold(
             "read_fee_schedule": canaries.canary_for("tc16_fee_schedule"),
             "read_engagement_template": canaries.canary_for("tc16_engagement_template"),
         },
-        error_detection={},  # No planted errors for TC-16 (Routine)
+        error_detection={
+            "ERR-013": (
+                "Fee schedule audit total shows $285,000 instead of $327,750 — "
+                "IPO complexity multiplier (1.15x) not applied"
+            ),
+        },
         scoring_hints={
             "correctness": (
                 "Audit fee = $285,000 × 1.15 = $327,750; "
@@ -589,7 +665,7 @@ def emit_tc16(
 ) -> None:
     """Write all TC-16 files to *output_dir*."""
     _write_client_profile(model, output_dir, canaries, manifest)
-    _write_fee_schedule(output_dir, canaries, manifest)
+    _write_fee_schedule(output_dir, canaries, errors, manifest)
     _write_engagement_template(output_dir, canaries, manifest)
     _write_prompt(output_dir)
     _write_expected_behavior(output_dir)

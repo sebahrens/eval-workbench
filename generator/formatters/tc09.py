@@ -14,8 +14,11 @@ Emits:
 - test_cases/TC-09/expected_behavior.md
 - gold_standards/TC-09_gold.json
 
-No planted ERR-xxx errors — the adversarial element is the services
-transfer at 11.2% operating margin (outside the 4.2%–8.7% IQR).
+Planted errors:
+- ERR-015 (wrong_entity): One IC transaction shows wrong subsidiary name.
+- ERR-017 (date_inconsistency): One IC transaction has invoice date off by one month.
+The adversarial element is the services transfer at 11.2% operating margin
+(outside the 4.2%–8.7% IQR).
 Uses the canonical model — never hardcodes numbers.
 """
 
@@ -47,7 +50,12 @@ from generator.canaries import (
     CanaryRegistry,
     embed_canary_xlsx,
 )
-from generator.errors import ErrorRegistry
+from generator.errors import (
+    ErrorRegistry,
+    PlantedError,
+    date_inconsistency,
+    wrong_entity,
+)
 from generator.golds.framework import GoldStandard, register_gold
 from generator.manifest import Manifest
 from generator.model.build import CascadeModel
@@ -175,6 +183,7 @@ def _write_ic_transactions_xlsx(
     model: CascadeModel,
     output_dir: Path,
     canaries: CanaryRegistry,
+    errors: ErrorRegistry,
     manifest: Manifest,
 ) -> list[Any]:
     """Write intercompany_transactions_fy2025.xlsx and return FY2025 transactions."""
@@ -193,15 +202,66 @@ def _write_ic_transactions_xlsx(
         ws.cell(row=1, column=col, value=h)
     _style_header(ws, 1, len(headers))
 
+    # ── ERR-015 / ERR-017: pick target rows for planted errors ────────
+    _ERR015_ROW_IDX = 4   # 0-based index into fy25_txns
+    _ERR017_ROW_IDX = 7   # 0-based index into fy25_txns
+
     # Data rows
     for i, tx in enumerate(fy25_txns, 2):
-        ws.cell(row=i, column=1, value=tx.date.strftime("%Y-%m-%d"))
+        # -- Date (column 1) — ERR-017: date_inconsistency on target row --
+        date_str = tx.date.strftime("%Y-%m-%d")
+        if (i - 2) == _ERR017_ROW_IDX:
+            correct_date = tx.date
+            wrong_month = (correct_date.month % 12) + 1  # shift by +1 month
+            wrong_year = correct_date.year + (1 if correct_date.month == 12 else 0)
+            wrong_date_obj = correct_date.replace(year=wrong_year, month=wrong_month)
+            date_str = date_inconsistency(
+                correct_date.strftime("%Y-%m-%d"),
+                wrong_date_obj.strftime("%Y-%m-%d"),
+            )
+            errors.add(PlantedError(
+                error_id="ERR-017",
+                file=f"{_INPUT_DIR}/intercompany_transactions_fy2025.xlsx",
+                location=(
+                    f"Sheet 'IC Transactions FY2025', Row {i}, Column A (Date)"
+                ),
+                type="date_inconsistency",
+                description=(
+                    f"Invoice date shows {wrong_date_obj.strftime('%m/%d/%Y')} "
+                    f"instead of {correct_date.strftime('%m/%d/%Y')} "
+                    f"(off by one month)"
+                ),
+                severity="immaterial",
+                which_test_cases_should_catch=["TC-09"],
+            ))
+        ws.cell(row=i, column=1, value=date_str)
         _style_data_cell(ws.cell(row=i, column=1))
 
         ws.cell(row=i, column=2, value=tx.seller_entity)
         _style_data_cell(ws.cell(row=i, column=2))
 
-        ws.cell(row=i, column=3, value=ENTITIES[tx.seller_entity].name)
+        # -- Seller Name (column 3) — ERR-015: wrong_entity on target row --
+        seller_name = ENTITIES[tx.seller_entity].name
+        if (i - 2) == _ERR015_ROW_IDX:
+            correct_name = seller_name
+            wrong_name = "Cascade Precision Manufacturing"
+            seller_name = wrong_entity(correct_name, wrong_name)
+            errors.add(PlantedError(
+                error_id="ERR-015",
+                file=f"{_INPUT_DIR}/intercompany_transactions_fy2025.xlsx",
+                location=(
+                    f"Sheet 'IC Transactions FY2025', Row {i}, "
+                    f"Column C (Seller Name)"
+                ),
+                type="wrong_entity",
+                description=(
+                    f"Seller name shows '{wrong_name}' "
+                    f"instead of '{correct_name}'"
+                ),
+                severity="material",
+                which_test_cases_should_catch=["TC-09"],
+            ))
+        ws.cell(row=i, column=3, value=seller_name)
         _style_data_cell(ws.cell(row=i, column=3))
 
         ws.cell(row=i, column=4, value=tx.buyer_entity)
@@ -1696,7 +1756,7 @@ def emit_tc09(
     manifest: Manifest,
 ) -> None:
     """Emit all TC-09 files."""
-    _write_ic_transactions_xlsx(model, output_dir, canaries, manifest)
+    _write_ic_transactions_xlsx(model, output_dir, canaries, errors, manifest)
     _write_comparables_xlsx(output_dir, canaries, manifest)
     _write_tp_report_pdf(output_dir, canaries, manifest)
     _write_prompt(output_dir)

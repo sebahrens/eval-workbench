@@ -9,8 +9,8 @@ Emits:
 - test_cases/TC-07/expected_behavior.md
 - gold_standards/TC-07_gold.json
 
-No planted errors for this TC — adversarial signal comes from layout
-diversity, the amended K-1, and the Section 199A C-corp trap.
+One planted error:
+  ERR-014 — K1-003 shows wrong entity name (wrong_entity).
 
 Uses the canonical model — never hardcodes numbers.
 """
@@ -25,7 +25,7 @@ from typing import Any
 from fpdf import FPDF
 
 from generator.canaries import CanaryRegistry, embed_canary_pdf_fpdf2
-from generator.errors import ErrorRegistry
+from generator.errors import ErrorRegistry, PlantedError, wrong_entity
 from generator.golds.framework import GoldStandard, register_gold
 from generator.manifest import Manifest
 from generator.model.build import CascadeModel
@@ -128,7 +128,9 @@ _BOX_LABELS: list[tuple[str, str]] = [
 ]
 
 
-def _render_system_clean(pdf: FPDF, inv: K1Investment) -> None:
+def _render_system_clean(
+    pdf: FPDF, inv: K1Investment, *, entity_name_override: str | None = None,
+) -> None:
     """Render a clean, system-generated K-1 layout."""
     pdf.add_page()
     pdf.set_font("Helvetica", "B", 14)
@@ -165,8 +167,11 @@ def _render_system_clean(pdf: FPDF, inv: K1Investment) -> None:
     pdf.set_font("Helvetica", "B", 10)
     pdf.cell(0, 6, "Part II - Information About the Partner", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "", 9)
-    entity = ENTITIES.get(inv.entity_code)
-    partner_name = entity.name if entity else inv.entity_code
+    if entity_name_override is not None:
+        partner_name = entity_name_override
+    else:
+        entity = ENTITIES.get(inv.entity_code)
+        partner_name = entity.name if entity else inv.entity_code
     pdf.cell(0, 5, f"F  Partner's name: {partner_name}", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(3)
 
@@ -444,10 +449,16 @@ def _write_k1_pdfs(
     output_dir: Path,
     canaries: CanaryRegistry,
     manifest: Manifest,
+    errors: ErrorRegistry,
 ) -> None:
     """Write 8 K-1 PDFs to the k1s/ subdirectory."""
     k1s_path = output_dir / _K1S_DIR
     k1s_path.mkdir(parents=True, exist_ok=True)
+
+    # ERR-014: K1-003 will show the wrong entity name
+    _ERR_014_K1 = "K1-003"
+    correct_entity = ENTITIES["AM"].name   # "Cascade Advanced Materials, Inc."
+    wrong_name = wrong_entity(correct_entity, "Cascade Precision Components LLC")
 
     varying_idx = 0
     for inv in investments:
@@ -456,7 +467,10 @@ def _write_k1_pdfs(
         pdf = _new_pdf(canary_code)
 
         if inv.layout_type == K1LayoutType.SYSTEM_CLEAN:
-            _render_system_clean(pdf, inv)
+            if inv.k1_id == _ERR_014_K1:
+                _render_system_clean(pdf, inv, entity_name_override=wrong_name)
+            else:
+                _render_system_clean(pdf, inv)
         else:
             _render_varying(pdf, inv, varying_idx)
             varying_idx += 1
@@ -476,6 +490,19 @@ def _write_k1_pdfs(
             canary=canary_code,
             test_cases=[_TC],
         )
+
+    # Register ERR-014
+    errors.add(PlantedError(
+        error_id="ERR-014",
+        file=f"{_K1S_DIR}/{_ERR_014_K1}.pdf",
+        location="Part II — Partner's name",
+        type="wrong_entity",
+        description=(
+            f"K1-003 shows '{wrong_name}' instead of '{correct_entity}'"
+        ),
+        severity="material",
+        which_test_cases_should_catch=[_TC],
+    ))
 
 
 # ── Prompt & expected behavior ───────────────────────────────────────────────
@@ -688,7 +715,13 @@ def _tc07_gold(
             ],
         },
         canary_verification=canary_verification,
-        error_detection={},
+        error_detection={
+            "ERR-014": (
+                "K1-003 displays the wrong entity name — "
+                "'Cascade Precision Components LLC' instead of "
+                "'Cascade Advanced Materials, Inc.'"
+            ),
+        },
         scoring_hints={
             "correctness": (
                 "All 8 K-1 values extracted correctly; consolidated totals "
@@ -723,7 +756,7 @@ def emit_tc07(
 ) -> None:
     """Write all TC-07 files to *output_dir*."""
     investments = generate_k1_investments()
-    _write_k1_pdfs(investments, output_dir, canaries, manifest)
+    _write_k1_pdfs(investments, output_dir, canaries, manifest, errors)
     _write_org_chart(investments, output_dir, canaries, manifest)
     _write_prompt(output_dir)
     _write_expected_behavior(output_dir)

@@ -13,8 +13,9 @@ Emits:
 - test_cases/TC-15/expected_behavior.md
 - gold_standards/TC-15_gold.json
 
-No planted errors for this test case. The adversarial element is the
-aggressive 200bps margin expansion assumption in management projections.
+Planted errors:
+- ERR-022 (missing_data): One comparable company has a blank EV/EBITDA field
+- ERR-025 (mismatched_total): FY2024 total revenue doesn't match component sum
 Uses the canonical model — never hardcodes numbers.
 """
 
@@ -43,7 +44,7 @@ from reportlab.platypus import (
 )
 
 from generator.canaries import CanaryRegistry, embed_canary_xlsx
-from generator.errors import ErrorRegistry
+from generator.errors import ErrorRegistry, PlantedError, mismatch_total, missing_data
 from generator.golds.framework import GoldStandard, register_gold
 from generator.manifest import Manifest
 from generator.model.build import CascadeModel
@@ -269,10 +270,32 @@ def _write_historical_xlsx(
     model: CascadeModel,
     output_dir: Path,
     canaries: CanaryRegistry,
+    errors: ErrorRegistry,
     manifest: Manifest,
 ) -> dict[str, Any]:
     """Write historical_financials_3yr.xlsx and return the historical data dict."""
     hist = _get_historical_data(model)
+
+    # ERR-025: corrupt FY2024 total revenue by a small delta ($3,247)
+    _err025_delta = Decimal("3247")
+    _err025_correct = hist[2024]["revenue"]
+    _err025_wrong = mismatch_total(_whole_dollars(_err025_correct), _whole_dollars(_err025_delta))
+    # We'll write the corrupted value; store it for the IS sheet below
+    _err025_corrupted_revenue = _err025_wrong
+
+    errors.add(PlantedError(
+        error_id="ERR-025",
+        file=f"{_INPUT_DIR}/historical_financials_3yr.xlsx",
+        location="Sheet 'Income Statement', Row 2, Column C (FY2024 Revenue)",
+        type="mismatched_total",
+        description=(
+            f"FY2024 total revenue shows ${_err025_wrong:,} "
+            f"instead of ${_whole_dollars(_err025_correct):,}"
+        ),
+        severity="material",
+        which_test_cases_should_catch=["TC-15"],
+    ))
+
     wb = openpyxl.Workbook()
     wb.properties.created = _FIXED_DATETIME
 
@@ -309,7 +332,11 @@ def _write_historical_xlsx(
         )
         if key:
             for c, year in enumerate([2023, 2024, 2025], 2):
-                cell = ws.cell(row=r, column=c, value=_whole_dollars(hist[year][key]))
+                val = _whole_dollars(hist[year][key])
+                # ERR-025: corrupt FY2024 revenue
+                if key == "revenue" and year == 2024:
+                    val = _err025_corrupted_revenue
+                cell = ws.cell(row=r, column=c, value=val)
                 _style_data_cell(cell)
 
     # ── Balance Sheet sheet ─────────────────────────────────
@@ -597,6 +624,7 @@ def _write_projections_xlsx(
 def _write_comps_xlsx(
     output_dir: Path,
     canaries: CanaryRegistry,
+    errors: ErrorRegistry,
     manifest: Manifest,
 ) -> None:
     """Write comparable_companies_trading.xlsx."""
@@ -618,17 +646,39 @@ def _write_comps_xlsx(
             ws.column_dimensions[openpyxl.utils.get_column_letter(c)].width = 16
     _style_header_row(ws, 1, len(headers))
 
+    # ERR-022: blank EV/EBITDA for MidWest Materials Group (index 2)
+    _ERR022_COMP_IDX = 2  # MidWest Materials Group
+    _err022_correct_ev_ebitda: float | None = None
+
     for r, comp in enumerate(_COMPARABLE_COMPANIES, 2):
         name, ticker, mcap, ev, rev, ebitda, ni, beta = comp
         ev_rev = round(ev / rev, 1)
         ev_ebitda = round(ev / ebitda, 1)
         pe = round(mcap / ni, 1)
 
+        # Plant ERR-022: blank EV/EBITDA for one company
+        if r - 2 == _ERR022_COMP_IDX:
+            _err022_correct_ev_ebitda = ev_ebitda
+            ev_ebitda = missing_data()  # writes None → blank cell
+
         row_data = [name, ticker, mcap, ev, rev, ebitda, ni, ev_rev, ev_ebitda, pe, beta]
         for c, val in enumerate(row_data, 1):
             cell = ws.cell(row=r, column=c, value=val)
             if c >= 3:
                 _style_data_cell(cell, "0.0" if c >= 8 else _NUM_FMT)
+
+    errors.add(PlantedError(
+        error_id="ERR-022",
+        file=f"{_INPUT_DIR}/comparable_companies_trading.xlsx",
+        location="Sheet 'Trading Comparables', Row 4, Column I (EV/EBITDA)",
+        type="missing_data",
+        description=(
+            f"EV/EBITDA multiple is blank for MidWest Materials Group "
+            f"instead of {_err022_correct_ev_ebitda}x"
+        ),
+        severity="immaterial",
+        which_test_cases_should_catch=["TC-15"],
+    ))
 
     # Summary statistics row
     summary_row = len(_COMPARABLE_COMPANIES) + 3
@@ -1498,7 +1548,20 @@ def _tc15_gold(
             "read_comparable_companies": canaries.canary_for("tc15_comparable_companies"),
             "read_industry_overview": canaries.canary_for("tc15_industry_overview"),
         },
-        error_detection={},
+        error_detection={
+            "ERR-022": {
+                "type": "missing_data",
+                "file": f"{_INPUT_DIR}/comparable_companies_trading.xlsx",
+                "description": "EV/EBITDA multiple is blank for MidWest Materials Group",
+                "severity": "immaterial",
+            },
+            "ERR-025": {
+                "type": "mismatched_total",
+                "file": f"{_INPUT_DIR}/historical_financials_3yr.xlsx",
+                "description": "FY2024 total revenue does not match sum of components",
+                "severity": "material",
+            },
+        },
         scoring_hints={
             "correctness": (
                 "WACC must be within 0.5pp of gold standard (~10.8%). "
@@ -1539,9 +1602,9 @@ def emit_tc15(
     manifest: Manifest,
 ) -> None:
     """Emit all TC-15 files."""
-    hist = _write_historical_xlsx(model, output_dir, canaries, manifest)
+    hist = _write_historical_xlsx(model, output_dir, canaries, errors, manifest)
     _write_projections_xlsx(hist, output_dir, canaries, manifest)
-    _write_comps_xlsx(output_dir, canaries, manifest)
+    _write_comps_xlsx(output_dir, canaries, errors, manifest)
     _write_industry_pdf(output_dir, canaries, manifest)
     _write_prompt(output_dir)
     _write_expected_behavior(output_dir)

@@ -13,14 +13,16 @@ Emits:
 - test_cases/TC-08/expected_behavior.md
 - gold_standards/TC-08_gold.json
 
-No planted ERR-xxx errors — the complexity is in applying the 4-part test,
-computing QREs, and using the ASC method correctly.
+Planted errors:
+- ERR-005 mismatched_total in payroll_data_fy2025.xlsx (material)
+- ERR-019 classification_error in rd_supply_expenses.xlsx (immaterial)
 
 Uses the canonical model — never hardcodes numbers.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import io
 import random
@@ -39,7 +41,12 @@ from generator.canaries import (
     embed_canary_docx,
     embed_canary_xlsx,
 )
-from generator.errors import ErrorRegistry
+from generator.errors import (
+    ErrorRegistry,
+    PlantedError,
+    classification_error,
+    mismatch_total,
+)
 from generator.golds.framework import GoldStandard, register_gold
 from generator.manifest import Manifest
 from generator.model.build import CascadeModel
@@ -239,6 +246,7 @@ def _write_payroll(
     model: CascadeModel,
     output_dir: Path,
     canaries: CanaryRegistry,
+    errors: ErrorRegistry,
     manifest: Manifest,
 ) -> None:
     """Write payroll_data_fy2025.xlsx — full payroll register for AM."""
@@ -292,8 +300,10 @@ def _write_payroll(
         key=lambda e: e.employee_id,
     )
 
+    total_wages = Decimal(0)
     for row_idx, emp in enumerate(am_employees, start=5):
         salary = Decimal(emp.annual_salary)
+        total_wages += salary
         fica = (salary * Decimal("0.0765")).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP,
         )
@@ -316,6 +326,36 @@ def _write_payroll(
             cell.number_format = number_fmt
             cell.border = border
 
+    # ── ERR-005: mismatched payroll total wages ─────────────────────────────
+    # The total row omits one employee's wages (~$2,400 delta).
+    # Pick the last employee's salary as the omitted amount.
+    omitted_salary = Decimal(am_employees[-1].annual_salary)
+    correct_total_wages = _whole_dollars(total_wages)
+    wrong_total_wages = mismatch_total(correct_total_wages, -_whole_dollars(omitted_salary))
+
+    totals_row = 5 + len(am_employees)
+    ws.cell(row=totals_row, column=1, value="")
+    ws.cell(row=totals_row, column=2, value="TOTAL")
+    ws.cell(row=totals_row, column=2).font = Font(bold=True)
+    cell = ws.cell(row=totals_row, column=5, value=wrong_total_wages)
+    cell.number_format = number_fmt
+    cell.font = Font(bold=True)
+    cell.border = border
+
+    errors.add(PlantedError(
+        error_id="ERR-005",
+        file=f"{_INPUT_DIR}/payroll_data_fy2025.xlsx",
+        location=f"Sheet 'Payroll Register FY2025', Row {totals_row}, Column E (Total W-2 Wages)",
+        type="mismatched_total",
+        description=(
+            f"Payroll total wages row shows ${wrong_total_wages:,} instead of "
+            f"${correct_total_wages:,} — one employee's salary "
+            f"(${_whole_dollars(omitted_salary):,}) was omitted from the total"
+        ),
+        severity="material",
+        which_test_cases_should_catch=["TC-08"],
+    ))
+
     # Column widths
     widths = [14, 24, 20, 28, 22, 18, 18, 20]
     for i, w in enumerate(widths, start=1):
@@ -335,12 +375,22 @@ def _write_payroll(
 def _write_supply_expenses(
     output_dir: Path,
     canaries: CanaryRegistry,
+    errors: ErrorRegistry,
     manifest: Manifest,
     seed: int,
 ) -> None:
     """Write rd_supply_expenses.xlsx."""
     rng = random.Random(seed)
     expenses = generate_supply_expenses(rng)
+
+    # ── ERR-019: classification_error — one expense under wrong project ─────
+    # Pick expense at index 7 and swap its project code to a non-qualifying
+    # project (RD-011, which is market research and should be excluded).
+    err_idx = 7
+    err_exp = expenses[err_idx]
+    correct_project = err_exp.project_code
+    wrong_project = classification_error(correct_project, "RD-011")
+    expenses[err_idx] = dataclasses.replace(err_exp, project_code=wrong_project)
 
     canary = canaries.canary_for(_KEY_SUPPLY)
 
@@ -398,6 +448,22 @@ def _write_supply_expenses(
 
     canaries.set_location(_KEY_SUPPLY, rel_path, loc)
     manifest.register(rel_path, "xlsx")
+
+    # Register ERR-019
+    err_row = 5 + err_idx
+    errors.add(PlantedError(
+        error_id="ERR-019",
+        file=f"{_INPUT_DIR}/rd_supply_expenses.xlsx",
+        location=f"Sheet 'R&D Supply Expenses', Row {err_row}, Column E (Project Code)",
+        type="classification_error",
+        description=(
+            f"Supply expense '{err_exp.description}' classified under "
+            f"project {wrong_project} (market research — non-qualifying) "
+            f"instead of {correct_project}"
+        ),
+        severity="immaterial",
+        which_test_cases_should_catch=["TC-08"],
+    ))
 
 
 # ── Prompt & Expected Behavior ──────────────────────────────────────────────
@@ -623,7 +689,20 @@ def _tc08_gold(
         test_case=_TC,
         expected_outputs=expected_outputs,
         canary_verification=canary_verification,
-        error_detection={},  # No planted errors for TC-08
+        error_detection={
+            "ERR-005": {
+                "type": "mismatched_total",
+                "file": f"{_INPUT_DIR}/payroll_data_fy2025.xlsx",
+                "severity": "material",
+                "description": "Payroll total wages row omits one employee",
+            },
+            "ERR-019": {
+                "type": "classification_error",
+                "file": f"{_INPUT_DIR}/rd_supply_expenses.xlsx",
+                "severity": "immaterial",
+                "description": "Supply expense classified under wrong project code",
+            },
+        },
         scoring_hints=scoring_hints,
     )
 
@@ -641,7 +720,7 @@ def emit_tc08(
     """Emit all TC-08 files."""
     _write_time_records_csv(model, output_dir, canaries, manifest, seed=42)
     _write_project_descriptions(output_dir, canaries, manifest)
-    _write_payroll(model, output_dir, canaries, manifest)
-    _write_supply_expenses(output_dir, canaries, manifest, seed=42)
+    _write_payroll(model, output_dir, canaries, errors, manifest)
+    _write_supply_expenses(output_dir, canaries, errors, manifest, seed=42)
     _write_prompt(output_dir)
     _write_expected_behavior(output_dir)

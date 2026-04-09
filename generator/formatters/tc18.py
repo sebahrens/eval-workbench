@@ -15,8 +15,9 @@ Emits:
 - test_cases/TC-18/expected_behavior.md
 - gold_standards/TC-18_gold.json
 
-No planted errors — adversarial signal comes from format changes,
-new files, and judgment-call requirements.
+Planted errors:
+  ERR-010: stale_data — one revenue account in wp_revenue_fy2024.xlsx shows
+           FY2023 value instead of FY2024 value (stale prior-year data)
 
 Uses the canonical model — never hardcodes numbers.
 """
@@ -42,7 +43,7 @@ from generator.canaries import (
     embed_canary_docx,
     embed_canary_xlsx,
 )
-from generator.errors import ErrorRegistry
+from generator.errors import ErrorRegistry, PlantedError, stale_data
 from generator.golds.framework import GoldStandard, register_gold
 from generator.manifest import Manifest
 from generator.model.build import CascadeModel
@@ -151,10 +152,13 @@ def _write_wp_revenue(
     model: CascadeModel,
     output_dir: Path,
     canaries: CanaryRegistry,
+    errors: ErrorRegistry,
     manifest: Manifest,
 ) -> dict[str, Any]:
     """Write wp_revenue_fy2024.xlsx — revenue workpaper with FY2024 data."""
+    _EOY_2023 = datetime.date(2023, 12, 31)
     tb = consolidated_trial_balance_eliminated(model.ledger, _EOY_2024)
+    tb_2023 = consolidated_trial_balance_eliminated(model.ledger, _EOY_2023)
     is_stmt = build_income_statement(model.ledger, 2024)
 
     wb = openpyxl.Workbook()
@@ -177,10 +181,35 @@ def _write_wp_revenue(
     # Revenue accounts from TB
     row = 2
     rev_data: dict[str, int] = {}
+    err_010_planted = False
     for acct_num in sorted(tb.keys()):
         acct_info = ACCOUNTS_BY_NUMBER.get(acct_num)
         if acct_info and acct_info.account_type == AccountType.REVENUE:
-            bal = _whole_dollars(-tb[acct_num])  # flip credit-normal to positive
+            correct_bal = _whole_dollars(-tb[acct_num])  # flip credit-normal to positive
+
+            # ERR-010: first revenue account shows FY2023 value (stale data)
+            if not err_010_planted and acct_num in tb_2023:
+                stale_bal = _whole_dollars(-tb_2023[acct_num])
+                if stale_bal != correct_bal:
+                    bal = stale_data(stale_bal)
+                    errors.add(PlantedError(
+                        error_id="ERR-010",
+                        file=f"{_PY_DIR}/wp_revenue_fy2024.xlsx",
+                        location=f"Sheet 'Revenue Analysis', account {acct_num} ({acct_info.name})",
+                        type="stale_data",
+                        description=(
+                            f"Revenue account {acct_num} shows ${stale_bal:,} "
+                            f"(FY2023 value) instead of ${correct_bal:,} (FY2024 value)"
+                        ),
+                        severity="immaterial",
+                        which_test_cases_should_catch=[_TC],
+                    ))
+                    err_010_planted = True
+                else:
+                    bal = correct_bal
+            else:
+                bal = correct_bal
+
             rev_data[acct_num] = bal
             ws.cell(row=row, column=1, value=acct_num).font = _NORMAL_FONT
             ws.cell(row=row, column=2, value=acct_info.name).font = _NORMAL_FONT
@@ -1269,7 +1298,12 @@ def _tc18_gold(
             ),
         },
         canary_verification=canary_verification,
-        error_detection={},
+        error_detection={
+            "ERR-010": (
+                "Revenue workpaper wp_revenue_fy2024.xlsx contains a stale "
+                "FY2023 value for one revenue account instead of FY2024 data"
+            ),
+        },
         scoring_hints={
             "correctness": (
                 "8 of 10 workpapers updated with correct FY2025 data; "
@@ -1310,7 +1344,7 @@ def emit_tc18(
 ) -> None:
     """Write all TC-18 files to *output_dir*."""
     # Prior year workpapers (xlsx)
-    _write_wp_revenue(model, output_dir, canaries, manifest)
+    _write_wp_revenue(model, output_dir, canaries, errors, manifest)
     _write_wp_expenses(model, output_dir, canaries, manifest)
     _write_wp_balance_sheet(model, output_dir, canaries, manifest)
     _write_wp_cash(model, output_dir, canaries, manifest)

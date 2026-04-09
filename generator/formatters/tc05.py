@@ -13,7 +13,9 @@ Emits:
 - test_cases/TC-05/expected_behavior.md
 - gold_standards/TC-05_gold.json
 
-No planted errors for this test case (Routine difficulty).
+Planted errors:
+- ERR-016 (date_inconsistency) in ar_confirmations_summary.xlsx
+- ERR-020 (missing_data) in ar_aging_fy2025.xlsx
 Uses the canonical model — never hardcodes numbers.
 """
 
@@ -29,7 +31,7 @@ import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
 
 from generator.canaries import CanaryRegistry, embed_canary_docx, embed_canary_xlsx
-from generator.errors import ErrorRegistry
+from generator.errors import ErrorRegistry, PlantedError, date_inconsistency, missing_data
 from generator.golds.framework import GoldStandard, register_gold
 from generator.manifest import Manifest
 from generator.model.ar import (
@@ -182,6 +184,7 @@ def _write_ar_aging(
     aging: list[ARAgingEntry],
     output_dir: Path,
     canaries: CanaryRegistry,
+    errors: ErrorRegistry,
     manifest: Manifest,
 ) -> None:
     """Write ar_aging_fy2025.xlsx — AR aging by customer with bucket detail."""
@@ -226,12 +229,15 @@ def _write_ar_aging(
     data_font = Font(size=10)
     row = header_row + 1
 
+    # ERR-020: pick the 3rd customer row to blank out its "Total AR" cell
+    err020_target_idx = 2  # 0-based index into aging list
+
     grand_total = {
         "current": 0, "days_30": 0, "days_60": 0,
         "days_90": 0, "days_120_plus": 0, "total": 0,
     }
 
-    for entry in aging:
+    for idx, entry in enumerate(aging):
         cur = _whole_dollars(entry.current)
         d30 = _whole_dollars(entry.days_30)
         d60 = _whole_dollars(entry.days_60)
@@ -242,7 +248,31 @@ def _write_ar_aging(
         ws.cell(row=row, column=1, value=entry.customer_id).font = data_font
         ws.cell(row=row, column=2, value=entry.customer_name).font = data_font
         ws.cell(row=row, column=3, value=entry.entity_code).font = data_font
-        for c, val in enumerate([cur, d30, d60, d90, d120, total], 4):
+
+        # ERR-020: blank out the Total AR cell for the target customer
+        if idx == err020_target_idx:
+            correct_total = total
+            corrupted_total = missing_data()  # returns None → blank cell
+            values = [cur, d30, d60, d90, d120, corrupted_total]
+            errors.add(PlantedError(
+                error_id="ERR-020",
+                file=f"{_INPUT_DIR}/ar_aging_fy2025.xlsx",
+                location=(
+                    f"Sheet 'AR Aging', Row {row}, Column I (Total AR) "
+                    f"for customer {entry.customer_name}"
+                ),
+                type="missing_data",
+                description=(
+                    f"Total AR balance is blank for {entry.customer_name} "
+                    f"instead of ${correct_total:,}"
+                ),
+                severity="immaterial",
+                which_test_cases_should_catch=["TC-05"],
+            ))
+        else:
+            values = [cur, d30, d60, d90, d120, total]
+
+        for c, val in enumerate(values, 4):
             cell = ws.cell(row=row, column=c, value=val)
             cell.font = data_font
             cell.number_format = money_fmt
@@ -290,6 +320,7 @@ def _write_confirmations(
     confirmations: list[dict[str, Any]],
     output_dir: Path,
     canaries: CanaryRegistry,
+    errors: ErrorRegistry,
     manifest: Manifest,
 ) -> None:
     """Write ar_confirmations_summary.xlsx."""
@@ -318,7 +349,7 @@ def _write_confirmations(
     header_row = 5
     headers = [
         "Customer ID", "Customer Name", "Entity", "Sent",
-        "Confirmation Amount", "Status", "Confirmed Amount",
+        "Response Date", "Confirmation Amount", "Status", "Confirmed Amount",
         "Exception Amount", "Exception Notes", "Alternative Procedures",
     ]
     header_font = Font(bold=True, size=10, color="FFFFFF")
@@ -337,28 +368,57 @@ def _write_confirmations(
     totals = {"sent": 0, "conf_amt": 0, "confirmed": 0, "exception": 0}
     status_counts = {"Agreed": 0, "Agreed with exceptions": 0, "No response": 0}
 
-    for conf in confirmations:
+    # ERR-016: pick the 2nd confirmation row to corrupt its response date
+    err016_target_idx = 1  # 0-based index
+    correct_response_date = "01/15/2026"
+    wrong_response_date = date_inconsistency(correct_response_date, "02/15/2026")
+
+    for conf_idx, conf in enumerate(confirmations):
         ws.cell(row=row, column=1, value=conf["customer_id"]).font = data_font
         ws.cell(row=row, column=2, value=conf["customer_name"]).font = data_font
         ws.cell(row=row, column=3, value=conf["entity"]).font = data_font
         ws.cell(row=row, column=4, value=conf["confirmation_sent"]).font = data_font
 
-        c5 = ws.cell(row=row, column=5, value=conf["confirmation_amount"])
-        c5.font = data_font
-        c5.number_format = money_fmt
+        # ERR-016: corrupt response date for one customer
+        if conf_idx == err016_target_idx:
+            response_date = wrong_response_date
+            errors.add(PlantedError(
+                error_id="ERR-016",
+                file=f"{_INPUT_DIR}/ar_confirmations_summary.xlsx",
+                location=(
+                    f"Sheet 'Confirmations', Row {row}, Column E (Response Date) "
+                    f"for customer {conf['customer_name']}"
+                ),
+                type="date_inconsistency",
+                description=(
+                    f"Confirmation response date for {conf['customer_name']} "
+                    f"shows {wrong_response_date} instead of {correct_response_date} "
+                    f"(inconsistent with AR aging date of 12/31/2025)"
+                ),
+                severity="immaterial",
+                which_test_cases_should_catch=["TC-05"],
+            ))
+        else:
+            response_date = correct_response_date
 
-        ws.cell(row=row, column=6, value=conf["status"]).font = data_font
+        ws.cell(row=row, column=5, value=response_date).font = data_font
 
-        c7 = ws.cell(row=row, column=7, value=conf["confirmed_amount"])
-        c7.font = data_font
-        c7.number_format = money_fmt
+        c6 = ws.cell(row=row, column=6, value=conf["confirmation_amount"])
+        c6.font = data_font
+        c6.number_format = money_fmt
 
-        c8 = ws.cell(row=row, column=8, value=conf["exception_amount"])
+        ws.cell(row=row, column=7, value=conf["status"]).font = data_font
+
+        c8 = ws.cell(row=row, column=8, value=conf["confirmed_amount"])
         c8.font = data_font
         c8.number_format = money_fmt
 
-        ws.cell(row=row, column=9, value=conf["exception_notes"]).font = data_font
-        ws.cell(row=row, column=10, value=conf["alternative_procedures"]).font = data_font
+        c9 = ws.cell(row=row, column=9, value=conf["exception_amount"])
+        c9.font = data_font
+        c9.number_format = money_fmt
+
+        ws.cell(row=row, column=10, value=conf["exception_notes"]).font = data_font
+        ws.cell(row=row, column=11, value=conf["alternative_procedures"]).font = data_font
 
         totals["sent"] += 1
         totals["conf_amt"] += conf["confirmation_amount"]
@@ -370,15 +430,15 @@ def _write_confirmations(
     # Totals row
     ws.cell(row=row, column=2, value="TOTAL").font = Font(bold=True, size=10)
     ws.cell(row=row, column=4, value=totals["sent"]).font = Font(bold=True, size=10)
-    c5t = ws.cell(row=row, column=5, value=totals["conf_amt"])
-    c5t.font = Font(bold=True, size=10)
-    c5t.number_format = money_fmt
-    c7t = ws.cell(row=row, column=7, value=totals["confirmed"])
-    c7t.font = Font(bold=True, size=10)
-    c7t.number_format = money_fmt
-    c8t = ws.cell(row=row, column=8, value=totals["exception"])
+    c6t = ws.cell(row=row, column=6, value=totals["conf_amt"])
+    c6t.font = Font(bold=True, size=10)
+    c6t.number_format = money_fmt
+    c8t = ws.cell(row=row, column=8, value=totals["confirmed"])
     c8t.font = Font(bold=True, size=10)
     c8t.number_format = money_fmt
+    c9t = ws.cell(row=row, column=9, value=totals["exception"])
+    c9t.font = Font(bold=True, size=10)
+    c9t.number_format = money_fmt
 
     # Summary row
     row += 2
@@ -406,12 +466,13 @@ def _write_confirmations(
     ws.column_dimensions["B"].width = 30
     ws.column_dimensions["C"].width = 10
     ws.column_dimensions["D"].width = 8
-    ws.column_dimensions["E"].width = 20
-    ws.column_dimensions["F"].width = 24
-    ws.column_dimensions["G"].width = 18
+    ws.column_dimensions["E"].width = 14
+    ws.column_dimensions["F"].width = 20
+    ws.column_dimensions["G"].width = 24
     ws.column_dimensions["H"].width = 18
-    ws.column_dimensions["I"].width = 35
-    ws.column_dimensions["J"].width = 30
+    ws.column_dimensions["I"].width = 18
+    ws.column_dimensions["J"].width = 35
+    ws.column_dimensions["K"].width = 30
 
     path = output_dir / _INPUT_DIR / "ar_confirmations_summary.xlsx"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -804,7 +865,10 @@ def _tc05_gold(
             "read_allowance": canaries.canary_for("allowance_analysis"),
             "read_template": canaries.canary_for("workpaper_memo_template"),
         },
-        error_detection={},
+        error_detection={
+            "ERR-016": "date_inconsistency in ar_confirmations_summary.xlsx",
+            "ERR-020": "missing_data in ar_aging_fy2025.xlsx",
+        },
         scoring_hints={
             "correctness": "Data references must match gold standard values from workpapers",
             "completeness": "All 5 template sections filled; all data sources referenced",
@@ -832,8 +896,8 @@ def emit_tc05(
     allowance_data = generate_allowance(model.revenue_records)
     confirmations = _generate_confirmations(aging, seed=42)
 
-    _write_ar_aging(aging, output_dir, canaries, manifest)
-    _write_confirmations(confirmations, output_dir, canaries, manifest)
+    _write_ar_aging(aging, output_dir, canaries, errors, manifest)
+    _write_confirmations(confirmations, output_dir, canaries, errors, manifest)
     _write_allowance(aging, allowance_data, output_dir, canaries, manifest)
     _copy_template(output_dir, canaries, manifest)
     _write_prompt(output_dir)

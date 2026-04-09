@@ -16,6 +16,8 @@ Emits:
 Planted errors:
   ERR-006: stale_data — prior year state rate (5.8%) not updated to 6.2%
            in the FY2024 workpaper state rate cell
+  ERR-012: formula_error — Total Debit in consolidated TB double-counts the
+           last debit-balance account (SUM range error)
 
 Uses the canonical model — never hardcodes numbers.
 """
@@ -33,7 +35,7 @@ import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 from generator.canaries import CanaryRegistry, embed_canary_docx, embed_canary_xlsx
-from generator.errors import ErrorRegistry, PlantedError, stale_data
+from generator.errors import ErrorRegistry, PlantedError, formula_error, stale_data
 from generator.golds.framework import GoldStandard, register_gold
 from generator.manifest import Manifest
 from generator.model.build import CascadeModel
@@ -124,6 +126,7 @@ def _write_consolidated_tb(
     model: CascadeModel,
     output_dir: Path,
     canaries: CanaryRegistry,
+    errors: ErrorRegistry,
     manifest: Manifest,
 ) -> None:
     """Write cascade_consolidated_tb_fy2025.xlsx — consolidated TB for tax."""
@@ -160,6 +163,7 @@ def _write_consolidated_tb(
     row = header_row + 1
     total_debit = Decimal(0)
     total_credit = Decimal(0)
+    last_debit = Decimal(0)
 
     for acct_num in sorted(tb.keys()):
         balance = tb[acct_num]
@@ -181,13 +185,35 @@ def _write_consolidated_tb(
         c5.font = _DATA_FONT
         c5.number_format = _MONEY_FMT
 
+        if balance > 0:
+            last_debit = max(balance, Decimal(0))
         total_debit += max(balance, Decimal(0))
         total_credit += abs(min(balance, Decimal(0)))
         row += 1
 
+    # ERR-012: formula_error — Total Debit double-counts the last debit-balance
+    # account (plausible SUM range error that extends one row too far).
+    correct_total_debit = _fmt_dollars(total_debit)
+    wrong_total_debit = _fmt_dollars(total_debit + last_debit)
+    displayed_total_debit = formula_error(correct_total_debit, wrong_total_debit)
+
+    errors.add(PlantedError(
+        error_id="ERR-012",
+        file=f"{_INPUT_DIR}/cascade_consolidated_tb_fy2025.xlsx",
+        location="Sheet 'Trial Balance', Total Debit cell",
+        type="formula_error",
+        description=(
+            f"Total Debit shows ${wrong_total_debit:,} instead of "
+            f"${correct_total_debit:,} (SUM range includes an extra row, "
+            f"double-counting the last debit-balance account)"
+        ),
+        severity="material",
+        which_test_cases_should_catch=[_TC],
+    ))
+
     # Totals row
     ws.cell(row=row, column=2, value="TOTAL").font = _BOLD_FONT
-    c3t = ws.cell(row=row, column=3, value=_fmt_dollars(total_debit))
+    c3t = ws.cell(row=row, column=3, value=displayed_total_debit)
     c3t.font = _BOLD_FONT
     c3t.number_format = _MONEY_FMT
     c4t = ws.cell(row=row, column=4, value=_fmt_dollars(total_credit))
@@ -746,6 +772,10 @@ def _write_expected_behavior(output_dir: Path) -> None:
 - The agent should notice that the FY2024 workpaper displays the state tax
   rate as 5.8% rather than 6.2%. While the dollar amount is correct, the
   displayed rate percentage is stale from a prior year.
+- The agent should notice that the consolidated trial balance total debit
+  is overstated due to a SUM range error that double-counts the last
+  debit-balance account. This is a material error that causes the TB to
+  not balance.
 """
     path = output_dir / f"test_cases/{_TC}/expected_behavior.md"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -840,6 +870,10 @@ def _tc06_gold(
                 "FY2024 workpaper shows state tax rate as 5.8% instead of 6.2% "
                 "(stale data from prior year, dollar amount is correct)"
             ),
+            "ERR-012": (
+                "Consolidated TB total debit is overstated — SUM range "
+                "double-counts the last debit-balance account"
+            ),
         },
         scoring_hints={
             "correctness": (
@@ -870,7 +904,7 @@ def emit_tc06(
     manifest: Manifest,
 ) -> None:
     """Write all TC-06 files to *output_dir*."""
-    _write_consolidated_tb(model, output_dir, canaries, manifest)
+    _write_consolidated_tb(model, output_dir, canaries, errors, manifest)
     _write_prior_year_workpaper(model, output_dir, canaries, errors, manifest)
     _write_perm_temp_differences(model, output_dir, canaries, manifest)
     _write_statutory_rates(output_dir, canaries, manifest)
