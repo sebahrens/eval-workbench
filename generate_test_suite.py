@@ -26,6 +26,7 @@ from generator.formatters.tc04 import emit_tc04
 from generator.formatters.tc05 import emit_tc05
 from generator.formatters.tc06 import emit_tc06
 from generator.formatters.tc07 import emit_tc07
+from generator.formatters.tc18 import emit_tc18
 from generator.golds.framework import emit_all_golds
 from generator.manifest import Manifest
 from generator.model.build import build_model
@@ -83,6 +84,22 @@ _CANARY_FILE_KEYS: list[str] = sorted([
     "tc07_k1_007",
     "tc07_k1_008",
     "tc07_entity_org_chart",
+    # TC-18 files (6 prior-year xlsx + 4 prior-year docx + 5 current-year)
+    "tc18_wp_revenue_fy2024",
+    "tc18_wp_expenses_fy2024",
+    "tc18_wp_balance_sheet_fy2024",
+    "tc18_wp_cash_fy2024",
+    "tc18_wp_fixed_assets_fy2024",
+    "tc18_wp_leases_fy2024",
+    "tc18_memo_planning_fy2024",
+    "tc18_memo_risk_assessment_fy2024",
+    "tc18_memo_summary_fy2024",
+    "tc18_memo_management_letter_fy2024",
+    "tc18_cy_trial_balance_fy2025",
+    "tc18_cy_bank_statements_fy2025",
+    "tc18_cy_lease_schedule_fy2025",
+    "tc18_cy_mgmt_projections_fy2025",
+    "tc18_cy_goodwill_impairment_fy2025",
 ])
 
 
@@ -134,6 +151,7 @@ def generate(config: Config, output: Path) -> Manifest:
         emit_tc05(model, output, canaries, errors, manifest)
         emit_tc06(model, output, canaries, errors, manifest)
         emit_tc07(model, output, canaries, errors, manifest)
+        emit_tc18(model, output, canaries, errors, manifest)
 
         # ── Emit gold standards ──────────────────────────────────────
         emit_all_golds(
