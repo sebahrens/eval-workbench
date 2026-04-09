@@ -611,11 +611,14 @@ def _tc07_gold(
             }
 
         if inv.section_199a_qbi is not None:
-            detail["section_199a"] = {
+            sec_199a: dict[str, int | None] = {
                 "qbi": _fmt_int(inv.section_199a_qbi),
-                "wages": _fmt_int(inv.section_199a_wages),
-                "ubia": _fmt_int(inv.section_199a_ubia),
             }
+            if inv.section_199a_wages is not None:
+                sec_199a["wages"] = _fmt_int(inv.section_199a_wages)
+            if inv.section_199a_ubia is not None:
+                sec_199a["ubia"] = _fmt_int(inv.section_199a_ubia)
+            detail["section_199a"] = sec_199a
 
         if inv.is_amended:
             detail["amendments"] = [

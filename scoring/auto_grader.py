@@ -609,12 +609,12 @@ class TestCaseGrader:
 
         if isinstance(expected, dict):
             for key in sorted(expected):
+                # Skip structural keys — these are checked in completeness
+                if key in ("file_type", "required_sheets"):
+                    continue
+                key_present = key in actual if isinstance(actual, dict) else False
                 actual_val = actual.get(key) if isinstance(actual, dict) else None
-                if actual_val is None:
-                    # Skip structural keys (file_type, required_sheets) —
-                    # these are checked in completeness
-                    if key in ("file_type", "required_sheets"):
-                        continue
+                if not key_present:
                     if isinstance(expected[key], dict):
                         # Recurse into sub-dicts even if actual is missing
                         sub_t, sub_m = self._compare_recursive(
