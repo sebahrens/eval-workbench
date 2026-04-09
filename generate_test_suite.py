@@ -41,6 +41,7 @@ from generator.formatters.templates import emit_templates
 from generator.golds.framework import emit_all_golds
 from generator.manifest import Manifest
 from generator.model.build import build_model
+from scoring.scoring_template import generate_scoring_template
 
 # Number of test cases defined in prompt.md §3–§6
 _TEST_CASE_COUNT = 18
@@ -277,6 +278,13 @@ def generate(config: Config, output: Path) -> Manifest:
             canaries, errors, output / "gold_standards",
             model=model,
         )
+
+        # ── Scoring template ─────────────────────────────────────────
+        rubrics_path = Path(__file__).resolve().parent / "scoring" / "rubrics.yaml"
+        generate_scoring_template(
+            rubrics_path, output / "scoring" / "scoring_template.xlsx",
+        )
+        manifest.register("scoring/scoring_template.xlsx", "xlsx")
 
         # ── Write registries ─────────────────────────────────────────
         canaries.write_json(output / "canary_registry.json")
