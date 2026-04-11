@@ -25,7 +25,6 @@ from __future__ import annotations
 import dataclasses
 import datetime
 import io
-import random
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
@@ -55,10 +54,7 @@ from generator.model.rd import (
     RD_PROJECTS,
     TARGET_CREDIT,
     TimeRecord,
-    compute_qres,
     generate_rd_projects,
-    generate_supply_expenses,
-    generate_time_records,
 )
 
 # ── Constants ────────────────────────────────────────────────────────────────
@@ -132,11 +128,9 @@ def _write_time_records_csv(
     output_dir: Path,
     canaries: CanaryRegistry,
     manifest: Manifest,
-    seed: int,
 ) -> list[TimeRecord]:
     """Write rd_employee_time_records.csv and return the records."""
-    rng = random.Random(seed)
-    records = generate_time_records(model.employees, rng)
+    records = model.rd_time_records
 
     rel_path = f"{_INPUT_DIR}/rd_employee_time_records.csv"
     abs_path = output_dir / rel_path
@@ -373,15 +367,14 @@ def _write_payroll(
 
 
 def _write_supply_expenses(
+    model: CascadeModel,
     output_dir: Path,
     canaries: CanaryRegistry,
     errors: ErrorRegistry,
     manifest: Manifest,
-    seed: int,
 ) -> None:
     """Write rd_supply_expenses.xlsx."""
-    rng = random.Random(seed)
-    expenses = generate_supply_expenses(rng)
+    expenses = list(model.rd_supply_expenses)
 
     # ── ERR-019: classification_error — one expense under wrong project ─────
     # Pick expense at index 7 and swap its project code to a non-qualifying
@@ -600,12 +593,7 @@ def _tc08_gold(
     """TC-08 gold standard: R&D tax credit study."""
     model: CascadeModel = model_kwargs["model"]
 
-    rng_time = random.Random(42)
-    rng_supply = random.Random(42)
-
-    records = generate_time_records(model.employees, rng_time)
-    expenses = generate_supply_expenses(rng_supply)
-    qre_result = compute_qres(records, expenses, model.employees)
+    qre_result = model.rd_qre_result
 
     # Project qualification details
     project_details: dict[str, dict[str, Any]] = {}
@@ -714,9 +702,9 @@ def emit_tc08(
     manifest: Manifest,
 ) -> None:
     """Emit all TC-08 files."""
-    _write_time_records_csv(model, output_dir, canaries, manifest, seed=42)
+    _write_time_records_csv(model, output_dir, canaries, manifest)
     _write_project_descriptions(output_dir, canaries, manifest)
     _write_payroll(model, output_dir, canaries, errors, manifest)
-    _write_supply_expenses(output_dir, canaries, errors, manifest, seed=42)
+    _write_supply_expenses(model, output_dir, canaries, errors, manifest)
     _write_prompt(output_dir)
     _write_expected_behavior(output_dir)

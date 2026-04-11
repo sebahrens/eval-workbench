@@ -21,7 +21,6 @@ Uses the canonical model for employees; ap_ledger.py for transaction generation.
 
 from __future__ import annotations
 
-import random
 from pathlib import Path
 from typing import Any
 
@@ -36,7 +35,6 @@ from generator.model.ap_ledger import (
     _PACIFIC_CONSULTING_NAME,
     _TARGET_EMPLOYEE_ID,
     APLedgerResult,
-    generate_ap_ledger,
 )
 from generator.model.build import CascadeModel
 
@@ -69,11 +67,9 @@ def _write_ap_csv(
     output_dir: Path,
     canaries: CanaryRegistry,
     manifest: Manifest,
-    seed: int,
 ) -> APLedgerResult:
     """Write ap_transactions_fy2025.csv and return the ledger result."""
-    rng = random.Random(seed)
-    result = generate_ap_ledger(rng, model.employees)
+    result = model.ap_ledger
 
     rel_path = f"{_INPUT_DIR}/ap_transactions_fy2025.csv"
     abs_path = output_dir / rel_path
@@ -276,9 +272,8 @@ def _tc13_gold(
     """TC-13 gold standard: forensic AP transaction analysis."""
     model: CascadeModel = model_kwargs["model"]
 
-    # Generate the ledger to get anomaly index and transaction details.
-    rng = random.Random(42)
-    result = generate_ap_ledger(rng, model.employees)
+    # Use canonical AP ledger from the model.
+    result = model.ap_ledger
 
     # Build expected outputs from the anomaly index.
     anomaly_index = result.anomaly_index
@@ -439,6 +434,6 @@ def emit_tc13(
     manifest: Manifest,
 ) -> None:
     """Emit all TC-13 files."""
-    _write_ap_csv(model, output_dir, canaries, manifest, seed=42)
+    _write_ap_csv(model, output_dir, canaries, manifest)
     _write_prompt(output_dir)
     _write_expected_behavior(output_dir)

@@ -12,10 +12,11 @@ formatters have everything they need.
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
+from generator.model.ap_ledger import APLedgerResult, generate_ap_ledger
 from generator.model.bank import BankModel, generate_bank_model, post_bank_to_gl
 from generator.model.entities import (
     ENTITIES,
@@ -69,6 +70,14 @@ from generator.model.ppe import (
     post_asset_acquisitions_to_gl,
     post_depreciation_to_gl,
 )
+from generator.model.rd import (
+    QREResult,
+    RDSupplyExpense,
+    TimeRecord,
+    compute_qres,
+    generate_supply_expenses,
+    generate_time_records,
+)
 from generator.model.revenue import (
     MonthlyRevenue,
     generate_monthly_revenue,
@@ -108,6 +117,12 @@ class CascadeModel:
     severance_exposures: tuple[SeveranceExposure, ...] = ()
     contractor_signals: tuple[ContractorClassificationSignal, ...] = ()
     diligence_requests: tuple[DiligenceRequest, ...] = ()
+    # R&D tax credit data (TC-08)
+    rd_time_records: list[TimeRecord] = field(default_factory=list)
+    rd_supply_expenses: list[RDSupplyExpense] = field(default_factory=list)
+    rd_qre_result: QREResult | None = None
+    # AP ledger (TC-13)
+    ap_ledger: APLedgerResult | None = None
 
 
 def build_model(config: Config | None = None, *, seed: int = 42) -> CascadeModel:
@@ -177,6 +192,17 @@ def build_model(config: Config | None = None, *, seed: int = 42) -> CascadeModel
     bank_model = generate_bank_model(bank_rng)
     post_bank_to_gl(ledger, bank_model)
 
+    # ── R&D time records & supply expenses (TC-08) ──────────────────
+    rd_time_rng = random.Random(effective_seed)
+    rd_time_records = generate_time_records(employees, rd_time_rng)
+    rd_supply_rng = random.Random(effective_seed)
+    rd_supply_expenses = generate_supply_expenses(rd_supply_rng)
+    rd_qre_result = compute_qres(rd_time_records, rd_supply_expenses, employees)
+
+    # ── AP ledger (TC-13) ─────────────────────────────────────────
+    ap_rng = random.Random(effective_seed)
+    ap_ledger_result = generate_ap_ledger(ap_rng, employees)
+
     # ── Tax provisions ──────────────────────────────────────────────
     # Pre-tax income comes from the income statement (built from GL)
     # computed BEFORE tax entries so we get the right base.
@@ -213,4 +239,10 @@ def build_model(config: Config | None = None, *, seed: int = 42) -> CascadeModel
         severance_exposures=SEVERANCE_EXPOSURES,
         contractor_signals=CONTRACTOR_CLASSIFICATION_SIGNALS,
         diligence_requests=DILIGENCE_REQUESTS,
+        # R&D (TC-08)
+        rd_time_records=rd_time_records,
+        rd_supply_expenses=rd_supply_expenses,
+        rd_qre_result=rd_qre_result,
+        # AP ledger (TC-13)
+        ap_ledger=ap_ledger_result,
     )
