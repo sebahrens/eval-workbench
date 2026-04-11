@@ -4,6 +4,8 @@
 Usage:
     python generate_test_suite.py --output /tmp/test_suite
     python generate_test_suite.py --config config.yaml --output /tmp/test_suite
+    python generate_test_suite.py --output /tmp/test_suite --packs all
+    python generate_test_suite.py --output /tmp/test_suite --packs cascade_legal_hr_diligence
 """
 
 from __future__ import annotations
@@ -126,6 +128,17 @@ def main(argv: list[str] | None = None) -> None:
         required=True,
         help="Output directory for the generated test suite",
     )
+    parser.add_argument(
+        "--packs",
+        nargs="*",
+        default=None,
+        metavar="PACK",
+        help=(
+            "Scenario packs to generate. Omit for default (accounting-core only). "
+            "Use 'all' to generate every registered pack. "
+            "Available packs: cascade_accounting_core, cascade_legal_hr_diligence."
+        ),
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -135,7 +148,12 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(1)
 
     output = Path(args.output)
-    generate(config, output)
+
+    try:
+        generate(config, output, pack_ids=args.packs)
+    except ConfigError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
