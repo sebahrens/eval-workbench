@@ -73,7 +73,7 @@ def generate(
     _create_directory_tree(output, tc_count)
 
     # ── Phase 1: Build canonical model ──────────────────────────────
-    model = build_model(config.seed)
+    model = build_model(config)
 
     # ── Canary & error registries ────────────────────────────────────
     canaries = build_canary_registry(canary_keys, seed=config.seed)

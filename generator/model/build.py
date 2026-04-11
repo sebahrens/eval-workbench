@@ -14,8 +14,12 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from generator.model.bank import BankModel, generate_bank_model, post_bank_to_gl
+
+if TYPE_CHECKING:
+    from generator.config import Config
 from generator.model.employees import Employee, generate_employees
 from generator.model.gl import Ledger
 from generator.model.hr_diligence import (
@@ -98,13 +102,23 @@ class CascadeModel:
     diligence_requests: tuple[DiligenceRequest, ...] = ()
 
 
-def build_model(seed: int = 42) -> CascadeModel:
+def build_model(config: Config | None = None, *, seed: int = 42) -> CascadeModel:
     """Build the complete Cascade Industries canonical model.
+
+    Parameters
+    ----------
+    config : Config, optional
+        Full configuration object.  When provided, the seed is taken
+        from ``config.seed`` and the *seed* keyword argument is ignored.
+    seed : int
+        Fallback seed used when *config* is not supplied (default 42).
+        Preserved for backward compatibility with tests.
 
     Wires: revenue, COGS, intercompany, employees, opex, PP&E,
     leases, and tax provisions.
     """
-    rng = random.Random(seed)
+    effective_seed = config.seed if config is not None else seed
+    rng = random.Random(effective_seed)
     ledger = Ledger()
 
     # ── Revenue & COGS ──────────────────────────────────────────────
@@ -144,7 +158,7 @@ def build_model(seed: int = 42) -> CascadeModel:
     post_leases_to_gl(ledger, leases, lease_schedules)
 
     # ── Bank transactions (TC-02) ─────────────────────────────────
-    bank_rng = random.Random(seed + 2)  # Isolated RNG for bank model
+    bank_rng = random.Random(effective_seed + 2)  # Isolated RNG for bank model
     bank_model = generate_bank_model(bank_rng)
     post_bank_to_gl(ledger, bank_model)
 
