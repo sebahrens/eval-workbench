@@ -49,8 +49,16 @@ def _create_directory_tree(output: Path, tc_count: int) -> None:
         (tc_dir / "input_files").mkdir(parents=True, exist_ok=True)
 
 
-def generate(config: Config, output: Path) -> Manifest:
+def generate(
+    config: Config, output: Path, pack_ids: list[str] | None = None,
+) -> Manifest:
     """Run the full generation pipeline.
+
+    Parameters
+    ----------
+    pack_ids : optional list of pack IDs to enable.  ``None`` (default)
+        selects the default packs (accounting-core only).  Pass ``["all"]``
+        to include every registered pack.
 
     Returns the Manifest so callers (tests) can inspect registered files.
     Model builders and formatters will be wired in by later beads.
@@ -58,7 +66,7 @@ def generate(config: Config, output: Path) -> Manifest:
     _seed_all(config.seed)
 
     # ── Resolve packs ───────────────────────────────────────────────
-    packs = resolve_packs(None)
+    packs = resolve_packs(pack_ids)
     tc_count = collect_test_case_count(packs)
     canary_keys = collect_canary_keys(packs)
 
@@ -78,8 +86,10 @@ def generate(config: Config, output: Path) -> Manifest:
                 emitter(model, output, canaries, errors, manifest)
 
         # ── Emit gold standards ──────────────────────────────────────
+        active_tcs = [tc for pack in packs for tc in pack.test_cases]
         emit_all_golds(
             canaries, errors, output / "gold_standards",
+            tc_ids=active_tcs,
             model=model,
         )
 

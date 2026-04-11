@@ -206,14 +206,22 @@ def emit_all_golds(
     canaries: CanaryRegistry,
     errors: ErrorRegistry,
     output_dir: Path,
+    *,
+    tc_ids: list[str] | None = None,
     **model_kwargs: Any,
 ) -> list[GoldStandard]:
-    """Emit gold JSONs for every registered test case.
+    """Emit gold JSONs for the given test cases (or all registered ones).
+
+    Parameters
+    ----------
+    tc_ids : optional explicit list of test case IDs to emit.  When ``None``
+        (default), emits for every registered test case.
 
     Returns the list of GoldStandard objects (sorted by test_case).
     """
+    ids = tc_ids if tc_ids is not None else registered_test_cases()
     golds: list[GoldStandard] = []
-    for tc_id in registered_test_cases():
+    for tc_id in sorted(ids):
         gold = emit_gold(tc_id, canaries, errors, output_dir, **model_kwargs)
         golds.append(gold)
     return golds
