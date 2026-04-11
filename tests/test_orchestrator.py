@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from generate_test_suite import _TEST_CASE_COUNT, generate
+from generate_test_suite import generate
 from generator.config import load_config
+from generator.packs import collect_test_case_count, resolve_packs
 
 
 def test_generate_creates_directory_tree(tmp_path: Path) -> None:
@@ -23,7 +24,8 @@ def test_generate_creates_directory_tree(tmp_path: Path) -> None:
     assert (output / "test_cases").is_dir()
 
     # Per-test-case dirs
-    for i in range(1, _TEST_CASE_COUNT + 1):
+    tc_count = collect_test_case_count(resolve_packs(None))
+    for i in range(1, tc_count + 1):
         tc = output / "test_cases" / f"TC-{i:02d}"
         assert tc.is_dir(), f"Missing {tc}"
         assert (tc / "input_files").is_dir(), f"Missing {tc}/input_files"
