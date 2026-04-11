@@ -582,8 +582,8 @@ class TestCaseGrader:
             except (json.JSONDecodeError, OSError):
                 continue
 
-        # For self-test mode, the gold standard IS the expected data
-        return self._expected
+        # No usable agent structured data found
+        return None
 
     def _compare_recursive(
         self,
