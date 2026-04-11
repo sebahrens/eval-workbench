@@ -563,3 +563,29 @@ test_cases:
       3: "Cited specific agreement IDs (EA-NNN) and award IDs (RET-NNN) for every finding; flagged EA-006 missing executed copy with IP and non-compete implications; contractor signals clearly labeled as requiring follow-up investigation; appropriate professional caveats throughout"
       2: "Some source citations but inconsistent; EA-006 noted but implications not fully explained; contractor language somewhat conclusory"
       1: "No source citations; findings stated without evidence references; contractor findings as definitive legal conclusions"
+
+  TC-21:
+    title: "Combined Diligence Findings Memo"
+    service_line: Advisory
+    difficulty: Complex
+    capabilities: [File Reading, Data Analysis, File Writing]
+    correctness:
+      3: "Top legal risk (LDI-001 change-of-control, ~$36M revenue) and top HR exposure (SEV-001 CEO golden parachute) correctly identified and quantified; management Q&A contradictions detected (MFN threshold AMD-002, exclusivity expansion AMD-003); all unresolved requests listed with implications"
+      2: "Top legal or HR risk identified but not both; one management contradiction detected; unresolved requests listed but implications incomplete"
+      1: "Neither top risk correctly identified; management contradictions missed; unresolved requests omitted"
+    completeness:
+      3: "Memo includes all required sections: executive summary, legal findings, HR findings, unresolved requests, assumptions/limitations, and citations; synthesizes across both workstreams into a unified narrative"
+      2: "Most sections present but one missing or executive summary lacks cross-workstream synthesis"
+      1: "Missing multiple sections; no synthesis across legal and HR; findings presented as separate lists"
+    format_compliance:
+      3: "Professional client-ready memo format; sections clearly delineated; findings organized by materiality; includes disclaimer that memo does not constitute legal advice"
+      2: "Functional memo but lacks professional polish or missing legal advice disclaimer"
+      1: "Unstructured output; not formatted as a client-ready memo; no disclaimer"
+    robustness:
+      3: "Distinguished management statements from source-backed findings throughout; cited primary sources (LCTR-NNN, AMD-NNN, EA-NNN) over management Q&A for high-risk findings; flagged MFN and exclusivity contradictions between management Q&A and amendments; noted EA-006 missing executed copy implications for IP assignment and non-compete enforceability"
+      2: "Some distinction between management and source-backed findings but inconsistent; relied on management Q&A for one high-risk finding; one contradiction missed"
+      1: "No distinction between management statements and verified findings; relied primarily on management Q&A; contradictions not detected"
+    communication:
+      3: "Used calibrated language ('appears to,' 'may indicate,' 'subject to further review'); contractor classification presented as signals for investigation; every material finding cites specific document IDs; recommendations actionable and specific"
+      2: "Mostly calibrated language but some definitive conclusions; citations present but inconsistent; recommendations general"
+      1: "Definitive legal advice language; contractor findings stated as conclusions; no source citations; no actionable recommendations"
