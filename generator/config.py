@@ -107,15 +107,18 @@ class ConfigError(Exception):
 # ---------------------------------------------------------------------------
 
 _REQUIRED_TOP = {"seed", "output_dir", "company"}
+_ALLOWED_TOP = _REQUIRED_TOP | {"canary_assignments", "error_injections", "augmentation"}
 _REQUIRED_COMPANY = {
     "name", "type", "industry", "headquarters", "fiscal_year_end",
     "years", "current_year", "consolidated_revenue", "subsidiaries",
     "growth_rates", "intercompany", "employees", "seasonal_weights",
 }
+_ALLOWED_COMPANY = _REQUIRED_COMPANY  # No optional company-level keys in v1
 _REQUIRED_SUBSIDIARY = {
     "legal_name", "location", "state", "entity_code", "revenue",
     "type", "gross_margin", "employee_count",
 }
+_ALLOWED_SUBSIDIARY = _REQUIRED_SUBSIDIARY | {"rd_spend_pct"}
 
 
 def _require_keys(data: dict, required: set[str], context: str) -> None:
@@ -124,8 +127,20 @@ def _require_keys(data: dict, required: set[str], context: str) -> None:
         raise ConfigError(f"Missing required keys in {context}: {sorted(missing)}")
 
 
+def _reject_unknown_keys(
+    data: dict, allowed: set[str], context: str,
+) -> None:
+    unknown = set(data) - allowed
+    if unknown:
+        raise ConfigError(
+            f"Unknown key(s) in {context}: {sorted(unknown)}. "
+            f"Only these keys are supported in v1: {sorted(allowed)}"
+        )
+
+
 def _parse_subsidiary(key: str, raw: dict) -> SubsidiaryConfig:
     _require_keys(raw, _REQUIRED_SUBSIDIARY, f"subsidiaries.{key}")
+    _reject_unknown_keys(raw, _ALLOWED_SUBSIDIARY, f"subsidiaries.{key}")
     return SubsidiaryConfig(
         legal_name=raw["legal_name"],
         location=raw["location"],
@@ -141,6 +156,7 @@ def _parse_subsidiary(key: str, raw: dict) -> SubsidiaryConfig:
 
 def _parse_company(raw: dict) -> CompanyConfig:
     _require_keys(raw, _REQUIRED_COMPANY, "company")
+    _reject_unknown_keys(raw, _ALLOWED_COMPANY, "company")
 
     subs = {k: _parse_subsidiary(k, v) for k, v in raw["subsidiaries"].items()}
     if not subs:
@@ -186,6 +202,7 @@ def load_config(path: str | Path) -> Config:
         raise ConfigError(f"Config root must be a mapping, got {type(raw).__name__}")
 
     _require_keys(raw, _REQUIRED_TOP, "config root")
+    _reject_unknown_keys(raw, _ALLOWED_TOP, "config root")
 
     company = _parse_company(raw["company"])
 
