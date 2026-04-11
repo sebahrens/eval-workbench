@@ -99,6 +99,109 @@ class TestGoldStandard:
         keys = list(d["expected_outputs"].keys())
         assert keys == sorted(keys)
 
+    def test_scenario_pack_fields_omitted_when_empty(self) -> None:
+        """New optional fields must not appear in output when empty/default."""
+        gold = GoldStandard(test_case="TC-01")
+        d = gold.to_dict()
+        for key in ("scenario_pack", "service_line", "evidence_expectations",
+                     "judgment_traps", "source_requirements"):
+            assert key not in d
+
+    def test_scenario_pack_fields_present_when_set(self) -> None:
+        gold = GoldStandard(
+            test_case="TC-19",
+            scenario_pack="ma_legal_hr_diligence",
+            service_line="advisory",
+            evidence_expectations={
+                "risk_change_of_control": {
+                    "required_sources": ["tc19_contract_acme", "tc19_acme_amendment_2025"],
+                    "primary_source_required": True,
+                    "acceptable_terms": ["change of control", "assignment"],
+                },
+            },
+            judgment_traps=[
+                {
+                    "trap_id": "JT-001",
+                    "trap_type": "summary_contradiction",
+                    "expected_response": "flag",
+                    "description": "Summary contradicts source clause",
+                },
+            ],
+            source_requirements={
+                "min_sources": 2,
+                "primary_source_required": True,
+            },
+        )
+        d = gold.to_dict()
+        assert d["scenario_pack"] == "ma_legal_hr_diligence"
+        assert d["service_line"] == "advisory"
+        assert "risk_change_of_control" in d["evidence_expectations"]
+        assert len(d["judgment_traps"]) == 1
+        assert d["judgment_traps"][0]["trap_id"] == "JT-001"
+        assert d["source_requirements"]["min_sources"] == 2
+
+    def test_evidence_expectations_sorted_deterministically(self) -> None:
+        gold = GoldStandard(
+            test_case="TC-19",
+            evidence_expectations={
+                "z_risk": {"required_sources": ["z_src"]},
+                "a_risk": {"required_sources": ["a_src"]},
+            },
+        )
+        d = gold.to_dict()
+        keys = list(d["evidence_expectations"].keys())
+        assert keys == ["a_risk", "z_risk"]
+
+    def test_judgment_traps_inner_keys_sorted(self) -> None:
+        gold = GoldStandard(
+            test_case="TC-19",
+            judgment_traps=[
+                {"z_field": "z", "a_field": "a"},
+            ],
+        )
+        d = gold.to_dict()
+        keys = list(d["judgment_traps"][0].keys())
+        assert keys == ["a_field", "z_field"]
+
+    def test_from_dict_backward_compat_no_new_fields(self) -> None:
+        """Old gold JSON without new fields must deserialize cleanly."""
+        old_data = {
+            "test_case": "TC-01",
+            "expected_outputs": {"total": 42},
+            "canary_verification": {"tb": "XK7P2M9Q"},
+            "error_detection": {"ERR-001": "desc"},
+        }
+        gold = GoldStandard.from_dict(old_data)
+        assert gold.test_case == "TC-01"
+        assert gold.scenario_pack == ""
+        assert gold.service_line == ""
+        assert gold.evidence_expectations == {}
+        assert gold.judgment_traps == []
+        assert gold.source_requirements == {}
+
+    def test_from_dict_with_new_fields(self) -> None:
+        data = {
+            "test_case": "TC-19",
+            "expected_outputs": {},
+            "canary_verification": {},
+            "error_detection": {},
+            "scenario_pack": "ma_legal_hr_diligence",
+            "service_line": "advisory",
+            "evidence_expectations": {
+                "risk_a": {"required_sources": ["src1"]},
+            },
+            "judgment_traps": [
+                {"trap_id": "JT-001", "trap_type": "missing_evidence"},
+            ],
+            "source_requirements": {"min_sources": 3},
+        }
+        gold = GoldStandard.from_dict(data)
+        assert gold.scenario_pack == "ma_legal_hr_diligence"
+        assert gold.service_line == "advisory"
+        assert gold.evidence_expectations["risk_a"]["required_sources"] == ["src1"]
+        assert gold.judgment_traps[0]["trap_id"] == "JT-001"
+        assert gold.source_requirements["min_sources"] == 3
+
 
 # ---------------------------------------------------------------------------
 # Registration
@@ -265,6 +368,48 @@ class TestRoundTrip:
             canary_verification={"tb": "AB12CD34", "prior_wp": "EF56GH78"},
             error_detection={},
             scoring_hints={"correctness": "±0.5% tolerance on computed values"},
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            assert verify_round_trip(gold, Path(tmpdir)) is True
+
+    def test_round_trip_with_scenario_pack_fields(self) -> None:
+        gold = GoldStandard(
+            test_case="TC-19",
+            expected_outputs={"risk_items": 5},
+            canary_verification={"contract": "AB12CD34"},
+            error_detection={},
+            scenario_pack="ma_legal_hr_diligence",
+            service_line="advisory",
+            evidence_expectations={
+                "risk_change_of_control": {
+                    "required_sources": ["tc19_contract_acme", "tc19_acme_amendment_2025"],
+                    "primary_source_required": True,
+                    "acceptable_terms": ["change of control", "assignment"],
+                },
+            },
+            judgment_traps=[
+                {
+                    "trap_id": "JT-001",
+                    "trap_type": "summary_contradiction",
+                    "expected_response": "flag",
+                    "description": "Summary contradicts source clause",
+                },
+            ],
+            source_requirements={
+                "min_sources": 2,
+                "primary_source_required": True,
+            },
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            assert verify_round_trip(gold, Path(tmpdir)) is True
+
+    def test_round_trip_old_gold_without_new_fields(self) -> None:
+        """Old-format gold (no scenario pack fields) round-trips cleanly."""
+        gold = GoldStandard(
+            test_case="TC-01",
+            expected_outputs={"total": 42},
+            canary_verification={"tb": "XK7P2M9Q"},
+            error_detection={"ERR-001": "transposed digits"},
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             assert verify_round_trip(gold, Path(tmpdir)) is True

@@ -5,14 +5,19 @@ data model and returns a GoldStandard dataclass.  The framework serialises
 every registered gold to ``gold_standards/TC-XX_gold.json`` and supports a
 round-trip self-test (emit → re-read → equal).
 
-Gold JSON schema (per prompt.md §7):
+Gold JSON schema (per prompt.md §7, extended per scenario-packs spec):
 
     {
       "test_case": "TC-XX",
       "expected_outputs": { ... },         # TC-specific numerical/structural expectations
       "canary_verification": { ... },      # {label: canary_code} the agent must read
       "error_detection": { ... },          # {error_id: description} the agent should catch
-      "scoring_hints": { ... }             # Optional: per-dimension scoring guidance
+      "scoring_hints": { ... },            # Optional: per-dimension scoring guidance
+      "scenario_pack": "...",              # Optional: pack ID that owns this TC
+      "service_line": "...",               # Optional: e.g. "audit", "tax", "advisory"
+      "evidence_expectations": { ... },    # Optional: per-finding evidence requirements
+      "judgment_traps": [ ... ],           # Optional: judgment trap summaries for this TC
+      "source_requirements": { ... }       # Optional: source provenance constraints
     }
 """
 
@@ -49,6 +54,21 @@ class GoldStandard:
         what the agent should flag.
     scoring_hints:
         Optional per-dimension guidance for the auto-grader / human grader.
+    scenario_pack:
+        Optional pack ID that owns this test case (e.g. ``"cascade_accounting_core"``).
+    service_line:
+        Optional service line (e.g. ``"audit"``, ``"tax"``, ``"advisory"``).
+    evidence_expectations:
+        Optional per-finding evidence requirements. Keys are finding IDs,
+        values are dicts with ``required_sources``, ``primary_source_required``,
+        and ``acceptable_terms``.
+    judgment_traps:
+        Optional list of judgment trap summaries relevant to this test case.
+        Each entry is a dict with ``trap_id``, ``trap_type``,
+        ``expected_response``, and ``description``.
+    source_requirements:
+        Optional source provenance constraints (e.g. minimum sources,
+        primary vs. secondary classification).
     """
 
     test_case: str
@@ -56,6 +76,13 @@ class GoldStandard:
     canary_verification: dict[str, str] = field(default_factory=dict)
     error_detection: dict[str, str] = field(default_factory=dict)
     scoring_hints: dict[str, Any] = field(default_factory=dict)
+
+    # -- scenario-pack extensions (all optional for backward compatibility) ----
+    scenario_pack: str = ""
+    service_line: str = ""
+    evidence_expectations: dict[str, Any] = field(default_factory=dict)
+    judgment_traps: list[dict[str, Any]] = field(default_factory=list)
+    source_requirements: dict[str, Any] = field(default_factory=dict)
 
     # -- serialisation --------------------------------------------------------
 
@@ -69,6 +96,17 @@ class GoldStandard:
         }
         if self.scoring_hints:
             d["scoring_hints"] = _sort_recursive(self.scoring_hints)
+        # Scenario-pack extensions — omitted when empty for backward compat
+        if self.scenario_pack:
+            d["scenario_pack"] = self.scenario_pack
+        if self.service_line:
+            d["service_line"] = self.service_line
+        if self.evidence_expectations:
+            d["evidence_expectations"] = _sort_recursive(self.evidence_expectations)
+        if self.judgment_traps:
+            d["judgment_traps"] = [_sort_recursive(t) for t in self.judgment_traps]
+        if self.source_requirements:
+            d["source_requirements"] = _sort_recursive(self.source_requirements)
         return d
 
     # -- deserialisation ------------------------------------------------------
@@ -82,6 +120,11 @@ class GoldStandard:
             canary_verification=data.get("canary_verification", {}),
             error_detection=data.get("error_detection", {}),
             scoring_hints=data.get("scoring_hints", {}),
+            scenario_pack=data.get("scenario_pack", ""),
+            service_line=data.get("service_line", ""),
+            evidence_expectations=data.get("evidence_expectations", {}),
+            judgment_traps=data.get("judgment_traps", []),
+            source_requirements=data.get("source_requirements", {}),
         )
 
 
