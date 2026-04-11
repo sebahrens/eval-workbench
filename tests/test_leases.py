@@ -7,6 +7,7 @@ import random
 
 from generator.model.gl import Ledger
 from generator.model.leases import (
+    ClauseType,
     EscalationType,
     LeaseType,
     asc842_temp_difference,
@@ -158,6 +159,102 @@ class TestGLPosting:
                 f"Unbalanced: {entry.description} "
                 f"DR={entry.total_debits()} CR={entry.total_credits()}"
             )
+
+
+class TestClauseReferences:
+    """Source-document clause traceability (synth-data-8ok.3)."""
+
+    def test_every_lease_has_clauses(self):
+        leases = _leases()
+        for ls in leases:
+            assert len(ls.clauses) >= 3, f"{ls.lease_id} has too few clauses"
+
+    def test_minimum_clause_types_present(self):
+        """Every lease must have at least premises, commencement, term, rent, termination."""
+        leases = _leases()
+        required = {
+            ClauseType.PREMISES, ClauseType.COMMENCEMENT,
+            ClauseType.TERM, ClauseType.RENT, ClauseType.TERMINATION,
+        }
+        for ls in leases:
+            types = {cl.clause_type for cl in ls.clauses}
+            missing = required - types
+            assert not missing, f"{ls.lease_id} missing clauses: {missing}"
+
+    def test_escalation_clause_when_applicable(self):
+        leases = _leases()
+        for ls in leases:
+            if ls.escalation_type != EscalationType.NONE:
+                assert ls.authoritative_clause(ClauseType.ESCALATION) is not None, (
+                    f"{ls.lease_id} has escalation {ls.escalation_type} but no clause"
+                )
+
+    def test_renewal_clause_when_applicable(self):
+        leases = _leases()
+        for ls in leases:
+            if ls.renewal_option_months > 0:
+                assert ls.authoritative_clause(ClauseType.RENEWAL) is not None, (
+                    f"{ls.lease_id} has renewal option but no clause"
+                )
+
+    def test_purchase_option_clause_when_applicable(self):
+        leases = _leases()
+        for ls in leases:
+            if ls.purchase_option:
+                assert ls.authoritative_clause(ClauseType.PURCHASE_OPTION) is not None, (
+                    f"{ls.lease_id} has purchase option but no clause"
+                )
+
+    def test_amended_leases_have_amendment_clauses(self):
+        leases = _leases()
+        amended = [ls for ls in leases if ls.amendments]
+        assert len(amended) == 3
+        for ls in amended:
+            for amend in ls.amendments:
+                assert len(amend.clauses) > 0, (
+                    f"{ls.lease_id} amendment '{amend.description}' has no clauses"
+                )
+
+    def test_authoritative_clause_prefers_amendment(self):
+        """For amended rent/term, authoritative_clause should return the amendment's version."""
+        leases = _leases()
+        for ls in leases:
+            if not ls.amendments:
+                continue
+            last_amend = ls.amendments[-1]
+            if last_amend.new_monthly_rent is not None:
+                auth = ls.authoritative_clause(ClauseType.RENT)
+                assert auth is not None
+                # The authoritative clause should come from an amendment
+                assert "Amendment" in auth.section_label, (
+                    f"{ls.lease_id}: authoritative RENT clause should be from amendment"
+                )
+
+    def test_short_term_leases_identifiable_from_clauses(self):
+        """Short-term exempt leases should have a term clause showing ≤12 months."""
+        leases = _leases()
+        for ls in leases:
+            if ls.short_term_exempt:
+                term_clause = ls.authoritative_clause(ClauseType.TERM)
+                assert term_clause is not None
+                assert str(ls.term_months) in term_clause.summary
+
+    def test_page_numbers_positive(self):
+        leases = _leases()
+        for ls in leases:
+            for cl in ls.clauses:
+                assert cl.page >= 1, f"{ls.lease_id} clause {cl.clause_type} has page {cl.page}"
+
+    def test_clauses_deterministic(self):
+        leases1 = generate_leases(random.Random(42))
+        leases2 = generate_leases(random.Random(42))
+        for l1, l2 in zip(leases1, leases2):
+            assert len(l1.clauses) == len(l2.clauses)
+            for c1, c2 in zip(l1.clauses, l2.clauses):
+                assert c1.clause_type == c2.clause_type
+                assert c1.section_label == c2.section_label
+                assert c1.page == c2.page
+                assert c1.summary == c2.summary
 
 
 class TestDeterminism:

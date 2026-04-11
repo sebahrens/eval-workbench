@@ -40,7 +40,37 @@ class EscalationType(Enum):
     NONE = "none"
 
 
+class ClauseType(Enum):
+    """Categories of lease clause that carry authoritative values."""
+
+    PREMISES = "premises"
+    COMMENCEMENT = "commencement"
+    TERM = "term"
+    RENT = "rent"
+    ESCALATION = "escalation"
+    RENEWAL = "renewal"
+    PURCHASE_OPTION = "purchase_option"
+    TERMINATION = "termination"
+
+
 # ── Dataclasses ─────────────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class LeaseClause:
+    """Source-document reference for a single lease clause.
+
+    Ties a model fact (e.g. commencement date, monthly rent) back to the
+    section and page in the source lease agreement where that fact appears.
+    Formatters use this to generate realistic PDFs with traceable section
+    numbers; the schedule and gold standard use it to cite authoritative
+    values.
+    """
+
+    clause_type: ClauseType
+    section_label: str     # e.g. "Article II, Section 2.1"
+    page: int              # 1-based page number in the source document
+    summary: str           # Human-readable one-liner, e.g. "Commencement: January 1, 2020"
+
 
 @dataclass(frozen=True)
 class Amendment:
@@ -52,6 +82,8 @@ class Amendment:
     new_monthly_rent: Decimal | None = None
     new_term_months: int | None = None
     new_escalation_pct: Decimal | None = None
+    # Source-document references for the amendment itself
+    clauses: tuple[LeaseClause, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -83,6 +115,9 @@ class Lease:
     rou_asset_initial: Decimal     # Initial ROU asset
     lease_liability_initial: Decimal  # Initial lease liability
 
+    # Source-document clause references for traceability
+    clauses: tuple[LeaseClause, ...] = ()
+
     @property
     def effective_monthly_rent(self) -> Decimal:
         """Monthly rent after applying last amendment, if any."""
@@ -109,6 +144,24 @@ class Lease:
         if month == 12:
             return datetime.date(year, 12, 31)
         return datetime.date(year, month, 1) - datetime.timedelta(days=1)
+
+    def authoritative_clause(self, clause_type: ClauseType) -> LeaseClause | None:
+        """Return the authoritative clause for *clause_type*.
+
+        Amendments override the original lease: if an amendment carries a
+        clause of the requested type, the latest amendment's version wins.
+        This mirrors ASC 842 remeasurement — amended terms are authoritative.
+        """
+        # Walk amendments in reverse (latest first)
+        for amend in reversed(self.amendments):
+            for cl in amend.clauses:
+                if cl.clause_type == clause_type:
+                    return cl
+        # Fall back to original lease clauses
+        for cl in self.clauses:
+            if cl.clause_type == clause_type:
+                return cl
+        return None
 
 
 # ── Discount rate helper ────────────────────────────────────────────────────
@@ -326,6 +379,163 @@ def _commencement_date(rng: random.Random, entity_code: str, term_months: int) -
         return datetime.date(year, month, 1)
 
 
+def _build_clauses(
+    tmpl: dict,
+    commence: datetime.date,
+    term_months: int,
+    monthly_rent: Decimal,
+    esc_pct: Decimal,
+    renewal_months: int,
+    purchase_price: Decimal | None,
+    termination: str,
+) -> tuple[LeaseClause, ...]:
+    """Build source-document clause references for a lease.
+
+    Section labels follow a standard commercial lease layout:
+      Article I:   Premises
+      Article II:  Term
+      Article III: Rent
+      Article IV:  Escalation
+      Article V:   Renewal Option
+      Article VI:  Purchase Option
+      Article VII: Termination
+
+    Page numbers are deterministic: premises on page 1, then each
+    subsequent article starts 1–2 pages later based on content density.
+    """
+    clauses: list[LeaseClause] = []
+    page = 1
+
+    # Premises
+    clauses.append(LeaseClause(
+        clause_type=ClauseType.PREMISES,
+        section_label="Article I, Section 1.1",
+        page=page,
+        summary=tmpl["description"],
+    ))
+
+    # Commencement
+    page += 1
+    clauses.append(LeaseClause(
+        clause_type=ClauseType.COMMENCEMENT,
+        section_label="Article II, Section 2.1",
+        page=page,
+        summary=f"Commencement: {commence.strftime('%B %d, %Y')}",
+    ))
+
+    # Term
+    clauses.append(LeaseClause(
+        clause_type=ClauseType.TERM,
+        section_label="Article II, Section 2.2",
+        page=page,
+        summary=f"Initial term: {term_months} months",
+    ))
+
+    # Rent
+    page += 1
+    rent_str = f"${int(monthly_rent):,}/month"
+    clauses.append(LeaseClause(
+        clause_type=ClauseType.RENT,
+        section_label="Article III, Section 3.1",
+        page=page,
+        summary=f"Base rent: {rent_str}",
+    ))
+
+    # Escalation (only if non-NONE)
+    esc_type = tmpl["escalation"]
+    if esc_type != EscalationType.NONE:
+        page += 1
+        if esc_type == EscalationType.FIXED_PCT:
+            esc_summary = f"Fixed annual escalation of {float(esc_pct) * 100:.1f}%"
+        elif esc_type == EscalationType.CPI:
+            esc_summary = "Annual adjustment based on Consumer Price Index (CPI)"
+        elif esc_type == EscalationType.STEPPED:
+            steps = tmpl.get("stepped_rents", ())
+            step_strs = [f"${int(s):,}" for s in steps]
+            esc_summary = f"Stepped rent: {', '.join(step_strs)} per year"
+        else:
+            esc_summary = str(esc_type.value)
+        clauses.append(LeaseClause(
+            clause_type=ClauseType.ESCALATION,
+            section_label="Article IV, Section 4.1",
+            page=page,
+            summary=esc_summary,
+        ))
+
+    # Renewal option (only if present)
+    if renewal_months > 0:
+        page += 1
+        clauses.append(LeaseClause(
+            clause_type=ClauseType.RENEWAL,
+            section_label="Article V, Section 5.1",
+            page=page,
+            summary=f"Renewal option: {renewal_months} months",
+        ))
+
+    # Purchase option (only if present)
+    if tmpl.get("purchase", False) and purchase_price is not None:
+        page += 1
+        clauses.append(LeaseClause(
+            clause_type=ClauseType.PURCHASE_OPTION,
+            section_label="Article VI, Section 6.1",
+            page=page,
+            summary=f"Purchase option: ${int(purchase_price):,}",
+        ))
+
+    # Termination
+    page += 1
+    clauses.append(LeaseClause(
+        clause_type=ClauseType.TERMINATION,
+        section_label="Article VII, Section 7.1",
+        page=page,
+        summary=termination,
+    ))
+
+    return tuple(clauses)
+
+
+def _build_amendment_clauses(
+    amend_idx: int,
+    amend_desc: str,
+    new_rent: Decimal | None,
+    new_term: int | None,
+) -> tuple[LeaseClause, ...]:
+    """Build source-document clause references for a lease amendment.
+
+    Amendment pages are appended to the original document starting after
+    the main body.  Section labels use "Amendment No. N" format.
+    """
+    clauses: list[LeaseClause] = []
+    prefix = f"Amendment No. {amend_idx}"
+
+    if new_rent is not None:
+        clauses.append(LeaseClause(
+            clause_type=ClauseType.RENT,
+            section_label=f"{prefix}, Section 1 — Revised Rent",
+            page=0,  # Page resolved at format time (appended after main body)
+            summary=f"Amended rent: ${int(new_rent):,}/month",
+        ))
+
+    if new_term is not None:
+        clauses.append(LeaseClause(
+            clause_type=ClauseType.TERM,
+            section_label=f"{prefix}, Section 2 — Revised Term",
+            page=0,
+            summary=f"Amended term: {new_term} months",
+        ))
+
+    if not clauses:
+        # Generic clause when only the description changes
+        clauses.append(LeaseClause(
+            clause_type=ClauseType.PREMISES,
+            section_label=f"{prefix}, Section 1",
+            page=0,
+            summary=amend_desc,
+        ))
+
+    return tuple(clauses)
+
+
 def generate_leases(rng: random.Random) -> list[Lease]:
     """Generate the 15-lease portfolio deterministically.
 
@@ -344,7 +554,7 @@ def generate_leases(rng: random.Random) -> list[Lease]:
 
         # Build amendments
         amendments: list[Amendment] = []
-        for amend_spec in tmpl.get("amendments", []):
+        for amend_idx, amend_spec in enumerate(tmpl.get("amendments", []), start=1):
             months_after, rent_delta, term_delta, desc = amend_spec
             eff_date = datetime.date(
                 commence.year + (commence.month - 1 + months_after) // 12,
@@ -353,11 +563,13 @@ def generate_leases(rng: random.Random) -> list[Lease]:
             )
             new_rent = (monthly_rent + Decimal(str(rent_delta))) if rent_delta is not None else None
             new_term = (term_months + term_delta) if term_delta is not None else None
+            amend_clauses = _build_amendment_clauses(amend_idx, desc, new_rent, new_term)
             amendments.append(Amendment(
                 effective_date=eff_date,
                 description=desc,
                 new_monthly_rent=new_rent,
                 new_term_months=new_term,
+                clauses=amend_clauses,
             ))
 
         # Determine effective values (after amendments)
@@ -406,6 +618,12 @@ def generate_leases(rng: random.Random) -> list[Lease]:
         else:
             renewal_increase = Decimal(0)
 
+        # Build source-document clause references
+        lease_clauses = _build_clauses(
+            tmpl, commence, term_months, monthly_rent, esc_pct,
+            renewal_months, purchase_price, termination,
+        )
+
         lease = Lease(
             lease_id=lease_id,
             entity_code=entity_code,
@@ -429,6 +647,7 @@ def generate_leases(rng: random.Random) -> list[Lease]:
             discount_rate=discount_rate,
             rou_asset_initial=rou_initial,
             lease_liability_initial=liability_initial,
+            clauses=lease_clauses,
         )
         leases.append(lease)
 
