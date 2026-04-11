@@ -463,29 +463,21 @@ class TestCaseGrader:
                             detail="No canaries defined for this test case"),
             ])
 
-        # For self-test mode, search the input files rather than agent output
-        # since there is no agent to produce output referencing canaries.
-        # For real grading, search agent output for evidence of reading
-        # the right files.
-        search_dirs = [self.agent_path]
-
-        # Also search the test case input_files directory (the canaries live
-        # in the input files that the agent should have read)
-        tc_inputs = self.suite_dir / "test_cases" / self.test_case_id / "input_files"
-        if tc_inputs.is_dir():
-            search_dirs.append(tc_inputs)
-
+        # Real grading: search only agent outputs for canary evidence.
+        # The agent must have referenced the canary in its output to prove it
+        # read the right files. SelfTestGrader overrides this to search input
+        # files instead (since there is no agent output in self-test mode).
         found_count = 0
         for label, canary_code in sorted(self._canaries.items()):
             found = False
             found_in = ""
-            for search_dir in search_dirs:
-                for fpath in sorted(search_dir.rglob("*")):
-                    if fpath.is_file() and _search_file_for_text(fpath, canary_code):
-                        found = True
+            for fpath in sorted(self.agent_path.rglob("*")):
+                if fpath.is_file() and _search_file_for_text(fpath, canary_code):
+                    found = True
+                    try:
                         found_in = str(fpath.relative_to(self.suite_dir))
-                        break
-                if found:
+                    except ValueError:
+                        found_in = str(fpath)
                     break
 
             checks.append(CheckResult(
