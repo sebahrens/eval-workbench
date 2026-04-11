@@ -456,6 +456,62 @@ def _tc20_gold(
                 ],
             },
         },
+        judgment_traps=[
+            {
+                "trap_id": "JT-TC20-001",
+                "trap_type": "missing_evidence",
+                "expected_response": "flag",
+                "description": (
+                    "EA-006 (Dr. Anika Patel) has no executed copy on file — "
+                    "only a draft. Agent must flag this as a diligence gap "
+                    "affecting IP assignment and non-compete enforceability."
+                ),
+            },
+            {
+                "trap_id": "JT-TC20-002",
+                "trap_type": "overconfident_conclusion",
+                "expected_response": "caveat",
+                "description": (
+                    "Dr. Patel has both severance (SEV-006: $255,000) and "
+                    "retention (RET-004: $150,000). Per EA-006, the interaction "
+                    "is greater-of, not additive. Agent must not sum them to "
+                    "$405,000; correct net exposure is $255,000."
+                ),
+            },
+            {
+                "trap_id": "JT-TC20-003",
+                "trap_type": "overconfident_conclusion",
+                "expected_response": "caveat",
+                "description": (
+                    "Contractor classification findings (CCS-001 through "
+                    "CCS-004) must be presented as risk signals requiring "
+                    "further investigation, not as definitive legal conclusions "
+                    "about misclassification."
+                ),
+            },
+            {
+                "trap_id": "JT-TC20-004",
+                "trap_type": "missing_evidence",
+                "expected_response": "flag",
+                "description": (
+                    "Every severance finding must cite the specific agreement "
+                    "ID (EA-NNN) and every retention finding must cite the "
+                    "award ID (RET-NNN). Findings citing only 'per management' "
+                    "without primary source references are insufficient."
+                ),
+            },
+            {
+                "trap_id": "JT-TC20-005",
+                "trap_type": "summary_contradiction",
+                "expected_response": "flag",
+                "description": (
+                    "Severance computations must match agreement terms exactly "
+                    "(base salary x multiplier = estimated payout). Any "
+                    "discrepancy between the schedule and agreement terms must "
+                    "be flagged."
+                ),
+            },
+        ],
         source_requirements={
             "minimum_sources_per_finding": 1,
             "primary_source_required_for_high_risk": True,

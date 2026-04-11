@@ -511,3 +511,55 @@ test_cases:
       3: "Flagged all structural changes (format changes, new accounts, renamed fields); highlighted goodwill impairment as significant new audit area; explicitly identified what requires manager judgment vs mechanical update"
       2: "Some flagging but didn't distinguish mechanical updates from judgment calls"
       1: "No flagging; silently made judgment calls or left issues unaddressed"
+
+  TC-19:
+    title: "Contract Risk Matrix (Legal Diligence)"
+    service_line: Advisory
+    difficulty: Complex
+    capabilities: [File Reading, Data Analysis, File Writing]
+    correctness:
+      3: "All 10 contracts in risk matrix; clause IDs and risk levels accurate; change-of-control (LDI-001), MFN contradiction (LDI-002), exclusivity expansion (LDI-003), government assignment (LDI-004), and IP dependency (LDI-005) all identified"
+      2: "8-9 contracts covered; most diligence issues identified but 1-2 risk levels wrong or one LDI issue missed"
+      1: "Fewer than 8 contracts covered; missed change-of-control or MFN contradiction; material risk level errors"
+    completeness:
+      3: "Risk matrix covers all 10 contracts with clause-level detail; all 5 diligence issues identified; consent/novation requirements flagged for LCTR-001 and LCTR-004; summary contradictions noted for LDI-002 and LDI-003"
+      2: "Most contracts and issues covered but missing one diligence issue or consent requirement"
+      1: "Incomplete matrix; missing multiple diligence issues or contracts"
+    format_compliance:
+      3: "Valid risk matrix format; columns include Contract ID, Counterparty, Clause, Source, Risk Level, Impact, Follow-Up; professional and sortable"
+      2: "Functional but missing columns or inconsistent formatting"
+      1: "Broken file or matrix not usable for decision-making"
+    robustness:
+      3: "Cited primary contracts/amendments (not just management summary) for high-risk findings; detected AMD-002 MFN threshold change and AMD-003 exclusivity expansion; management summary contradictions identified"
+      2: "Some primary source citations but relied on management summary for 1-2 high-risk findings"
+      1: "Relied primarily on management summary; didn't cross-reference amendments; missed contradictions"
+    communication:
+      3: "Ranked risks by severity; explained change-of-control and novation implications; flagged management summary staleness; recommended specific follow-up actions per finding"
+      2: "Risks listed but not ranked; some follow-up recommendations but incomplete"
+      1: "No risk ranking; no follow-up recommendations; findings not actionable"
+
+  TC-20:
+    title: "HR Diligence Exposure Summary"
+    service_line: Advisory
+    difficulty: Complex
+    capabilities: [File Reading, Data Analysis, File Writing]
+    correctness:
+      3: "All 7 executives covered; severance computations match agreement terms (base salary x multiplier); total severance and retention totals correct; Dr. Patel double-count avoided (greater-of $255,000, not additive $405,000); missing EA-006 executed copy flagged"
+      2: "5-6 executives correct; most severance computations right but one multiplier wrong or Patel double-count partially addressed; missing agreement noted but implications not fully explored"
+      1: "Fewer than 5 executives correct; material computation errors; summed Patel severance and retention; missed EA-006 issue"
+    completeness:
+      3: "Exposure schedule with all 7 severance entries and 4 retention awards; all 4 contractors assessed; findings memo covers top exposures, double-count risk, missing agreement, contractor signals, and assumptions"
+      2: "Most entries present but missing 1-2 retention awards or 1 contractor; findings memo missing a section"
+      1: "Incomplete schedule; missing contractors or retention analysis entirely; no findings memo"
+    format_compliance:
+      3: "Valid exposure schedule format; columns include employee, title, base salary, multiplier, payout, trigger; findings memo is professional and actionable"
+      2: "Functional but missing columns in schedule or memo lacks professional tone"
+      1: "Broken file or schedule not usable; memo unstructured"
+    robustness:
+      3: "Verified each severance payout against agreement terms; identified retention/severance overlap for Dr. Patel with correct interaction rule; contractor classification presented as signals with appropriate caveats; EA-006 IP assignment implications noted"
+      2: "Most verifications correct but missed one agreement cross-check or contractor assessment incomplete"
+      1: "No cross-verification; accepted schedule at face value; contractor findings stated as legal conclusions"
+    communication:
+      3: "Cited specific agreement IDs (EA-NNN) and award IDs (RET-NNN) for every finding; flagged EA-006 missing executed copy with IP and non-compete implications; contractor signals clearly labeled as requiring follow-up investigation; appropriate professional caveats throughout"
+      2: "Some source citations but inconsistent; EA-006 noted but implications not fully explained; contractor language somewhat conclusory"
+      1: "No source citations; findings stated without evidence references; contractor findings as definitive legal conclusions"
