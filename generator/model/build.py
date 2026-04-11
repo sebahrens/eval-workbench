@@ -235,7 +235,9 @@ def build_model(config: Config | None = None, *, seed: int = 42) -> CascadeModel
 
     # ── AP ledger (TC-13) ─────────────────────────────────────────
     ap_rng = random.Random(effective_seed)
-    ap_ledger_result = generate_ap_ledger(ap_rng, employees)
+    ap_ledger_result = generate_ap_ledger(
+        ap_rng, employees, revenue_records=revenue_records,
+    )
 
     # ── Tax provisions ──────────────────────────────────────────────
     # Pre-tax income comes from the income statement (built from GL)

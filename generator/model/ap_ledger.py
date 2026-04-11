@@ -23,8 +23,9 @@ import random
 from dataclasses import dataclass
 from decimal import Decimal
 
-from generator.model.ap import VENDORS
+from generator.model.ap import VENDORS, compute_vendor_annual_purchases
 from generator.model.employees import Employee
+from generator.model.revenue import MonthlyRevenue
 
 # ── Data structures ─────────────────────────────────────────────────────────
 
@@ -49,11 +50,25 @@ class APTransaction:
 
 
 @dataclass
+class VendorSummary:
+    """Per-vendor reconciliation between AP ledger and AP aging/subledger."""
+
+    vendor_id: str
+    vendor_name: str
+    entity_code: str
+    ledger_total: Decimal       # Sum of AP ledger transactions for this vendor
+    target_purchases: Decimal   # Annual purchase target from revenue model
+    anomaly_total: Decimal      # Sum of anomaly transactions for this vendor
+    normal_total: Decimal       # Sum of normal transactions for this vendor
+
+
+@dataclass
 class APLedgerResult:
     """Return value of :func:`generate_ap_ledger`."""
 
     transactions: list[APTransaction]
     anomaly_index: dict[str, list[str]]  # anomaly_type → [transaction_id, ...]
+    vendor_summaries: list[VendorSummary]  # Per-vendor reconciliation
 
 
 # ── US federal holidays for FY2025 ─────────────────────────────────────────
@@ -606,45 +621,160 @@ def _build_normal_transactions(
     employees: list[Employee],
     count: int,
     next_id: int,
+    vendor_targets: dict[str, Decimal] | None = None,
+    anomaly_by_vendor: dict[str, Decimal] | None = None,
 ) -> tuple[list[APTransaction], int]:
-    """Generate ``count`` normal (non-anomalous) AP transactions."""
+    """Generate ``count`` normal (non-anomalous) AP transactions.
+
+    When *vendor_targets* is supplied, transactions are distributed across
+    vendors proportionally to their purchase targets, and amounts are scaled
+    so each vendor's normal transactions sum to the target minus any anomaly
+    amounts already attributed to that vendor.  This ties the 52K-row ledger
+    to the AP aging / subledger / GL.
+    """
     txns: list[APTransaction] = []
 
-    for _ in range(count):
-        vendor = rng.choice(VENDORS)
-        # Log-normal-ish distribution: most txns are $100-$5,000
-        raw = rng.lognormvariate(7.5, 1.2)
-        amount = Decimal(str(round(raw, 2)))
-        # Clamp to realistic range
-        if amount < Decimal("50.00"):
-            amount = Decimal("50.00") + Decimal(str(rng.randint(0, 200))) / Decimal("100")
-        if amount > Decimal("100000.00"):
-            amount = Decimal(str(rng.randint(5000_00, 100000_00))) / Decimal("100")
+    if vendor_targets is None:
+        # Legacy path: uniform random vendor, unscaled amounts.
+        for _ in range(count):
+            vendor = rng.choice(VENDORS)
+            raw = rng.lognormvariate(7.5, 1.2)
+            amount = Decimal(str(round(raw, 2)))
+            if amount < Decimal("50.00"):
+                amount = Decimal("50.00") + Decimal(str(rng.randint(0, 200))) / Decimal("100")
+            if amount > Decimal("100000.00"):
+                amount = Decimal(str(rng.randint(5000_00, 100000_00))) / Decimal("100")
 
-        descriptions = [
-            f"Materials purchase — {vendor.name}",
-            f"Service payment — {vendor.name}",
-            f"Monthly retainer — {vendor.name}",
-            f"Parts order — {vendor.name}",
-            f"Maintenance services — {vendor.name}",
-            f"Equipment rental — {vendor.name}",
-            f"Freight charges — {vendor.name}",
-            f"Utilities — {vendor.name}",
-        ]
+            descriptions = [
+                f"Materials purchase — {vendor.name}",
+                f"Service payment — {vendor.name}",
+                f"Monthly retainer — {vendor.name}",
+                f"Parts order — {vendor.name}",
+                f"Maintenance services — {vendor.name}",
+                f"Equipment rental — {vendor.name}",
+                f"Freight charges — {vendor.name}",
+                f"Utilities — {vendor.name}",
+            ]
 
-        txns.append(APTransaction(
-            transaction_id=f"APT-{next_id:06d}",
-            date=_random_date_fy2025(rng),
-            vendor_id=vendor.id,
-            vendor_name=vendor.name,
-            amount=amount,
-            description=rng.choice(descriptions),
-            approver=_pick_approver(rng, employees),
-            cost_center=_pick_cost_center(rng),
-            payment_method=_pick_payment_method(rng),
-            invoice_number=_make_invoice_number(rng, vendor.id),
-        ))
-        next_id += 1
+            txns.append(APTransaction(
+                transaction_id=f"APT-{next_id:06d}",
+                date=_random_date_fy2025(rng),
+                vendor_id=vendor.id,
+                vendor_name=vendor.name,
+                amount=amount,
+                description=rng.choice(descriptions),
+                approver=_pick_approver(rng, employees),
+                cost_center=_pick_cost_center(rng),
+                payment_method=_pick_payment_method(rng),
+                invoice_number=_make_invoice_number(rng, vendor.id),
+            ))
+            next_id += 1
+
+        return txns, next_id
+
+    # ── Vendor-targeted path: tie to AP subledger ──────────────────────
+    anom = anomaly_by_vendor or {}
+
+    # Compute per-vendor normal targets (total target minus anomaly amounts).
+    vendor_normal_targets: dict[str, Decimal] = {}
+    total_target = Decimal(0)
+    for vid, target in sorted(vendor_targets.items()):
+        normal_target = target - anom.get(vid, Decimal(0))
+        if normal_target < Decimal(0):
+            normal_target = Decimal(0)
+        vendor_normal_targets[vid] = normal_target
+        total_target += normal_target
+
+    # Allocate transaction count per vendor proportional to target.
+    vendor_list = sorted(vendor_normal_targets.keys())
+    vendor_counts: dict[str, int] = {}
+    remaining = count
+    for i, vid in enumerate(vendor_list):
+        if i == len(vendor_list) - 1:
+            vendor_counts[vid] = remaining
+        else:
+            share = vendor_normal_targets[vid] / total_target if total_target > 0 else Decimal(0)
+            n = int(count * float(share))
+            n = max(n, 20)  # at least 20 txns per vendor
+            vendor_counts[vid] = n
+            remaining -= n
+
+    if remaining < 0:
+        # Redistribute excess from the last vendor
+        last = vendor_list[-1]
+        vendor_counts[last] = max(vendor_counts[last], 20)
+
+    # Build vendor lookup for names.
+    vendor_by_id = {v.id: v for v in VENDORS}
+
+    descriptions_templates = [
+        "Materials purchase",
+        "Service payment",
+        "Monthly retainer",
+        "Parts order",
+        "Maintenance services",
+        "Equipment rental",
+        "Freight charges",
+        "Utilities",
+    ]
+
+    for vid in vendor_list:
+        vendor = vendor_by_id[vid]
+        n = vendor_counts[vid]
+        target = vendor_normal_targets[vid]
+
+        if n == 0 or target <= 0:
+            continue
+
+        # Generate raw log-normal amounts, then scale to match target.
+        raw_amounts: list[float] = []
+        for _ in range(n):
+            raw = rng.lognormvariate(7.5, 1.2)
+            raw = max(raw, 50.0)
+            raw = min(raw, 100000.0)
+            raw_amounts.append(raw)
+
+        raw_total = sum(raw_amounts)
+        scale = float(target) / raw_total if raw_total > 0 else 1.0
+
+        # Scale and quantize to cents.
+        scaled: list[Decimal] = []
+        running_target = target
+        for j, raw in enumerate(raw_amounts):
+            if j == n - 1:
+                # Last transaction absorbs rounding remainder.
+                amt = running_target
+            else:
+                amt = Decimal(str(round(raw * scale, 2)))
+                # Clamp to at least $10.00 to avoid trivial rows.
+                if amt < Decimal("10.00"):
+                    amt = Decimal("10.00")
+                running_target -= amt
+            scaled.append(amt)
+
+        # If rounding pushed the last amount negative, redistribute.
+        if scaled[-1] < Decimal("10.00"):
+            deficit = Decimal("10.00") - scaled[-1]
+            scaled[-1] = Decimal("10.00")
+            # Trim from the largest transaction.
+            max_idx = max(range(len(scaled) - 1), key=lambda k: scaled[k])
+            scaled[max_idx] -= deficit
+
+        for amt in scaled:
+            desc_template = rng.choice(descriptions_templates)
+            txns.append(APTransaction(
+                transaction_id=f"APT-{next_id:06d}",
+                date=_random_date_fy2025(rng),
+                vendor_id=vendor.id,
+                vendor_name=vendor.name,
+                amount=amt,
+                description=f"{desc_template} — {vendor.name}",
+                approver=_pick_approver(rng, employees),
+                cost_center=_pick_cost_center(rng),
+                payment_method=_pick_payment_method(rng),
+                invoice_number=_make_invoice_number(rng, vendor.id),
+            ))
+            next_id += 1
 
     return txns, next_id
 
@@ -655,6 +785,7 @@ def generate_ap_ledger(
     rng: random.Random,
     employees: list[Employee],
     total_rows: int = 52_000,
+    revenue_records: list[MonthlyRevenue] | None = None,
 ) -> APLedgerResult:
     """Generate the 52K-row AP transaction ledger with planted anomalies.
 
@@ -663,10 +794,14 @@ def generate_ap_ledger(
         employees: Full employee roster (needed for approver names and
             employee-address matching).
         total_rows: Target total transaction count (default 52,000).
+        revenue_records: Monthly revenue records.  When supplied, normal
+            transaction amounts are scaled so each vendor's total ties to
+            the AP subledger purchase volumes (procure-to-pay lifecycle).
 
     Returns:
-        APLedgerResult with transactions sorted by transaction_id and
-        an anomaly index mapping anomaly type to transaction IDs.
+        APLedgerResult with transactions sorted by transaction_id,
+        an anomaly index mapping anomaly type to transaction IDs, and
+        per-vendor summaries tying the ledger to AP aging.
     """
     all_txns: list[APTransaction] = []
     next_id = 1
@@ -693,6 +828,20 @@ def generate_ap_ledger(
     approver_txns, next_id = _build_approver_anomalies(rng, employees, next_id)
     all_txns.extend(approver_txns)
 
+    # Compute per-vendor anomaly totals (only for vendors in the VENDORS tuple).
+    anomaly_by_vendor: dict[str, Decimal] = {}
+    vendor_ids = {v.id for v in VENDORS}
+    for txn in all_txns:
+        if txn.vendor_id in vendor_ids:
+            anomaly_by_vendor[txn.vendor_id] = (
+                anomaly_by_vendor.get(txn.vendor_id, Decimal(0)) + txn.amount
+            )
+
+    # Compute vendor purchase targets when revenue data is available.
+    vendor_targets: dict[str, Decimal] | None = None
+    if revenue_records is not None:
+        vendor_targets = compute_vendor_annual_purchases(revenue_records, year=2025)
+
     # Fill remaining rows with normal transactions.
     anomaly_count = len(all_txns)
     normal_count = total_rows - anomaly_count
@@ -702,6 +851,8 @@ def generate_ap_ledger(
 
     normal_txns, next_id = _build_normal_transactions(
         rng, employees, normal_count, next_id,
+        vendor_targets=vendor_targets,
+        anomaly_by_vendor=anomaly_by_vendor,
     )
     all_txns.extend(normal_txns)
 
@@ -714,4 +865,41 @@ def generate_ap_ledger(
         if txn.anomaly_type:
             anomaly_index.setdefault(txn.anomaly_type, []).append(txn.transaction_id)
 
-    return APLedgerResult(transactions=all_txns, anomaly_index=anomaly_index)
+    # Build per-vendor summaries for reconciliation.
+    vendor_by_id = {v.id: v for v in VENDORS}
+    vendor_ledger_totals: dict[str, Decimal] = {}
+    vendor_normal_totals: dict[str, Decimal] = {}
+    vendor_anomaly_totals: dict[str, Decimal] = {}
+    for txn in all_txns:
+        if txn.vendor_id in vendor_ids:
+            vendor_ledger_totals[txn.vendor_id] = (
+                vendor_ledger_totals.get(txn.vendor_id, Decimal(0)) + txn.amount
+            )
+            if txn.anomaly_type:
+                vendor_anomaly_totals[txn.vendor_id] = (
+                    vendor_anomaly_totals.get(txn.vendor_id, Decimal(0)) + txn.amount
+                )
+            else:
+                vendor_normal_totals[txn.vendor_id] = (
+                    vendor_normal_totals.get(txn.vendor_id, Decimal(0)) + txn.amount
+                )
+
+    vendor_summaries: list[VendorSummary] = []
+    for vid in sorted(vendor_ids):
+        v = vendor_by_id[vid]
+        target = vendor_targets.get(vid, Decimal(0)) if vendor_targets else Decimal(0)
+        vendor_summaries.append(VendorSummary(
+            vendor_id=vid,
+            vendor_name=v.name,
+            entity_code=v.entity_code,
+            ledger_total=vendor_ledger_totals.get(vid, Decimal(0)),
+            target_purchases=target,
+            anomaly_total=vendor_anomaly_totals.get(vid, Decimal(0)),
+            normal_total=vendor_normal_totals.get(vid, Decimal(0)),
+        ))
+
+    return APLedgerResult(
+        transactions=all_txns,
+        anomaly_index=anomaly_index,
+        vendor_summaries=vendor_summaries,
+    )

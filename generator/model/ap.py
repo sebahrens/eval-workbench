@@ -234,6 +234,35 @@ def _entity_ap_at_month_end(
 
 # ── Public API ───────────────────────────────────────────────────────────────
 
+
+def compute_vendor_annual_purchases(
+    revenue_records: list[MonthlyRevenue],
+    year: int = 2025,
+) -> dict[str, Decimal]:
+    """Compute total annual purchases per vendor for the given fiscal year.
+
+    Returns {vendor_id: annual_purchases} derived from entity revenue × purchase
+    rate × vendor purchase share.  These are the same purchase volumes that drive
+    AP aging and AP flows, so the AP transaction ledger can tie to them.
+    """
+    rev_lookup = _entity_monthly_revenue(revenue_records)
+
+    result: dict[str, Decimal] = {}
+    for vendor in VENDORS:
+        annual = Decimal(0)
+        for month in range(1, 13):
+            entity_purchases = _monthly_purchases(
+                vendor.entity_code, year, month, rev_lookup
+            )
+            vendor_monthly = (entity_purchases * vendor.purchase_share).quantize(
+                Decimal("1"), rounding=ROUND_HALF_UP
+            )
+            annual += vendor_monthly
+        result[vendor.id] = annual
+
+    return result
+
+
 def generate_ap_aging(
     revenue_records: list[MonthlyRevenue],
     year: int = 2025,

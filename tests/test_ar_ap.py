@@ -8,11 +8,13 @@ from decimal import Decimal
 
 from generator.model.ap import (
     VENDORS,
+    compute_vendor_annual_purchases,
     generate_ap_aging,
     generate_ap_flows,
     post_ap_to_gl,
     validate_ap_equals_gl,
 )
+from generator.model.ap_ledger import generate_ap_ledger
 from generator.model.ar import (
     CUSTOMERS,
     generate_allowance,
@@ -422,3 +424,92 @@ class TestReceipts:
         for a, b in zip(rct1, rct2):
             assert a.receipt_id == b.receipt_id
             assert a.amount == b.amount
+
+
+# ── Procure-to-pay lifecycle tie-out ─────────────────────────────────────────
+
+
+class TestProcureToPayTieOut:
+    """AP ledger normal transactions tie to AP subledger purchase volumes."""
+
+    def test_vendor_normal_totals_match_targets(self):
+        """Each vendor's normal txn total = target purchases − anomaly amounts."""
+        records = _make_revenue()
+        rng = random.Random(42)
+        employees_rng = random.Random(42)
+        from generator.model.employees import generate_employees
+
+        employees = generate_employees(employees_rng)
+        result = generate_ap_ledger(rng, employees, revenue_records=records)
+
+        for vs in result.vendor_summaries:
+            if vs.target_purchases == Decimal(0):
+                continue
+            expected_normal = vs.target_purchases - vs.anomaly_total
+            assert vs.normal_total == expected_normal, (
+                f"{vs.vendor_id}: normal_total={vs.normal_total} ≠ "
+                f"target({vs.target_purchases}) − anomaly({vs.anomaly_total}) = "
+                f"{expected_normal}"
+            )
+
+    def test_entity_ledger_totals_approximate_annual_purchases(self):
+        """Per-entity ledger totals (including anomalies) should approximately
+        match annual purchase volumes from the AP subledger model."""
+        records = _make_revenue()
+        vendor_targets = compute_vendor_annual_purchases(records, year=2025)
+
+        rng = random.Random(42)
+        employees_rng = random.Random(42)
+        from generator.model.employees import generate_employees
+
+        employees = generate_employees(employees_rng)
+        result = generate_ap_ledger(rng, employees, revenue_records=records)
+
+        # Sum targets and ledger totals by entity.
+        for entity_code in ("PC", "AM", "DS"):
+            target_total = sum(
+                amt for vid, amt in vendor_targets.items()
+                if next(v for v in VENDORS if v.id == vid).entity_code == entity_code
+            )
+            entity_vendors = {v.id for v in VENDORS if v.entity_code == entity_code}
+            ledger_total = sum(
+                vs.ledger_total for vs in result.vendor_summaries
+                if vs.vendor_id in entity_vendors
+            )
+            # Allow small tolerance for anomaly amounts from non-trade vendors
+            # (VEND-050+) that don't have targets.
+            diff = abs(ledger_total - target_total)
+            assert diff / target_total < Decimal("0.01"), (
+                f"{entity_code}: ledger_total={ledger_total} vs "
+                f"target={target_total} (diff={diff})"
+            )
+
+    def test_vendor_summaries_cover_all_vendors(self):
+        """Vendor summaries should include all 26 trade vendors."""
+        records = _make_revenue()
+        rng = random.Random(42)
+        employees_rng = random.Random(42)
+        from generator.model.employees import generate_employees
+
+        employees = generate_employees(employees_rng)
+        result = generate_ap_ledger(rng, employees, revenue_records=records)
+
+        summary_ids = {vs.vendor_id for vs in result.vendor_summaries}
+        vendor_ids = {v.id for v in VENDORS}
+        assert summary_ids == vendor_ids
+
+    def test_ledger_total_equals_normal_plus_anomaly(self):
+        """For each vendor, ledger_total = normal_total + anomaly_total."""
+        records = _make_revenue()
+        rng = random.Random(42)
+        employees_rng = random.Random(42)
+        from generator.model.employees import generate_employees
+
+        employees = generate_employees(employees_rng)
+        result = generate_ap_ledger(rng, employees, revenue_records=records)
+
+        for vs in result.vendor_summaries:
+            assert vs.ledger_total == vs.normal_total + vs.anomaly_total, (
+                f"{vs.vendor_id}: {vs.ledger_total} ≠ "
+                f"{vs.normal_total} + {vs.anomaly_total}"
+            )
