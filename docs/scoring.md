@@ -98,11 +98,52 @@ Example from a TC-19 gold standard:
 
 Evidence expectations are optional and backward-compatible. Older gold standards without this field are scored normally. When present, the auto-grader checks that agent outputs reference the required sources and contain acceptable terms.
 
+### The evidence dimension
+
+When a gold standard defines `evidence_expectations`, the auto-grader scores an additional **evidence** dimension (1–3) alongside the standard five dimensions. This dimension is omitted for test cases without evidence expectations, so it does not affect TC-01 through TC-18 scoring.
+
+The evidence dimension evaluates four concepts:
+
+**Primary-source reliance.** High-risk findings must cite primary sources (contracts, agreements, amendments) rather than secondary summaries. For example, a change-of-control risk finding should reference the specific contract clause (e.g., `LCTR-001 §12.3`) and any relevant amendment (`AMD-002`), not just a management summary that paraphrases the clause. The auto-grader checks `required_sources` and enforces `primary_source_required` when set.
+
+**Missing evidence.** When the data room is incomplete — a contract is unsigned, an executed copy is absent, a diligence request is unanswered — the agent must flag the gap rather than silently proceeding as if the evidence exists. Missing evidence is distinct from a wrong answer: the correct response is to note the gap and caveat any conclusions that depend on it.
+
+**Assumptions and limitations.** Professional diligence memos include an explicit assumptions/limitations section. The agent should disclose what it assumed (e.g., that an unsigned draft reflects the final terms) and what it could not verify (e.g., whether a non-compete is enforceable in a specific jurisdiction). Findings that omit these qualifications score lower on evidence.
+
+**Caveated conclusions.** Professional advisors use calibrated language: "appears to," "may indicate," "subject to further review." The agent must avoid definitive legal advice (e.g., "this contract is unenforceable") and instead present findings as signals requiring follow-up. The `acceptable_terms` list in each evidence expectation captures the key phrases the agent should use.
+
+### Scoring mechanics
+
+The auto-grader checks each finding in `evidence_expectations` independently:
+
+1. **Source check**: Are all `required_sources` referenced in the agent output?
+2. **Term check**: Does the agent output contain at least one of the `acceptable_terms`?
+
+A finding passes if both checks pass. The overall evidence score:
+
+| Score | Criteria |
+|---|---|
+| 3 | All findings pass both source and term checks |
+| 2 | At least 50% of findings pass |
+| 1 | Fewer than 50% of findings pass |
+
+Per-TC evidence anchors in `rubrics.yaml` provide concrete guidance for human raters beyond what the auto-grader checks mechanically.
+
 ## Judgment traps (legal/HR diligence pack)
 
 Judgment traps are professional-judgment challenges distinct from planted numerical errors. They test whether the agent can identify contradictions, missing evidence, scope boundaries, and overconfident conclusions.
 
 Each trap is recorded in a judgment trap registry with a `JDG-NNN` ID. Unlike `ERR-NNN` planted errors (which have a definitive right answer), judgment traps have expected responses like `flag`, `caveat`, `deprioritize`, or `do_not_assert` — reflecting the calibrated language expected of a professional advisor.
+
+### How judgment traps affect scoring
+
+Judgment traps influence the standard five dimensions rather than creating a separate score:
+
+- **Correctness**: Did the agent identify the trap? A missed contradiction (e.g., management summary says $5M but the contract says $3.6M) is a correctness failure.
+- **Robustness**: Did the agent cross-reference sources to detect the trap, or did it accept the first source uncritically?
+- **Communication**: Did the agent use appropriate language when reporting the trap? A `flag` trap expects the agent to raise the issue prominently; a `caveat` trap expects a qualified statement; a `do_not_assert` trap expects the agent to refrain from making a definitive claim.
+
+The distinction between judgment traps and planted errors matters for grading calibration. A planted error (`ERR-NNN`) has one correct answer — the agent either catches the $9,000 mismatch or it doesn't. A judgment trap (`JDG-NNN`) tests the quality of professional reasoning — there is no single right number, but there is a right approach (cite sources, acknowledge uncertainty, use calibrated language).
 
 See [`specs/universal-professional-services-scenario-packs.md`](../specs/universal-professional-services-scenario-packs.md) for the full judgment trap schema.
 

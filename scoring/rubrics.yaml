@@ -1,5 +1,7 @@
 # Cascade Industries Test Suite — Scoring Rubrics
-# Per-test-case rubric on 5 dimensions (prompt.md §7.1).
+# Per-test-case rubric on 5 dimensions (prompt.md §7.1), plus an optional
+# evidence dimension for test cases with evidence_expectations in their gold
+# standard (currently TC-19 through TC-21).
 # Each dimension is scored 1–3 with concrete anchors referencing gold standards.
 
 dimensions:
@@ -37,6 +39,13 @@ dimensions:
       3: "Proactively explained approach, flagged uncertainties, identified errors"
       2: "Adequate communication, some gaps"
       1: "Silent about approach, missed obvious items to flag"
+
+  evidence:
+    description: "Citation of primary sources and use of calibrated professional language (optional; scored only when the gold standard defines evidence_expectations)"
+    generic_anchors:
+      3: "All required sources cited; acceptable terms present for every finding; primary sources preferred over management summaries"
+      2: "Most required sources cited; some findings rely on secondary sources or miss acceptable key terms"
+      1: "Required sources not cited; findings unsupported or rely entirely on management summaries"
 
 # ---------------------------------------------------------------------------
 # Per-test-case rubrics
@@ -537,6 +546,10 @@ test_cases:
       3: "Ranked risks by severity; explained change-of-control and novation implications; flagged management summary staleness; recommended specific follow-up actions per finding"
       2: "Risks listed but not ranked; some follow-up recommendations but incomplete"
       1: "No risk ranking; no follow-up recommendations; findings not actionable"
+    evidence:
+      3: "Every high-risk finding cites primary contract or amendment (LCTR-NNN, AMD-NNN); management summary contradictions identified by cross-referencing primary sources; acceptable terms (change of control, assignment, MFN, exclusivity) present where applicable"
+      2: "Most findings cite primary sources but 1-2 high-risk findings rely solely on management summary; most acceptable terms present"
+      1: "Findings rely on management summary without cross-referencing primary contracts; no source document IDs cited; key terms missing"
 
   TC-20:
     title: "HR Diligence Exposure Summary"
@@ -563,6 +576,10 @@ test_cases:
       3: "Cited specific agreement IDs (EA-NNN) and award IDs (RET-NNN) for every finding; flagged EA-006 missing executed copy with IP and non-compete implications; contractor signals clearly labeled as requiring follow-up investigation; appropriate professional caveats throughout"
       2: "Some source citations but inconsistent; EA-006 noted but implications not fully explained; contractor language somewhat conclusory"
       1: "No source citations; findings stated without evidence references; contractor findings as definitive legal conclusions"
+    evidence:
+      3: "Every severance and retention finding cites specific agreement IDs (EA-NNN, RET-NNN); census and schedule sources referenced for computations; missing EA-006 executed copy flagged with source gap; contractor classification presented with appropriate caveats citing classification signals"
+      2: "Most findings cite agreement IDs but 1-2 computations lack source references; EA-006 issue noted but source gap not explicit; contractor caveats present but inconsistent"
+      1: "No agreement or award IDs cited; computations presented without source references; contractor findings stated as conclusions without evidence basis"
 
   TC-21:
     title: "Combined Diligence Findings Memo"
@@ -589,3 +606,7 @@ test_cases:
       3: "Used calibrated language ('appears to,' 'may indicate,' 'subject to further review'); contractor classification presented as signals for investigation; every material finding cites specific document IDs; recommendations actionable and specific"
       2: "Mostly calibrated language but some definitive conclusions; citations present but inconsistent; recommendations general"
       1: "Definitive legal advice language; contractor findings stated as conclusions; no source citations; no actionable recommendations"
+    evidence:
+      3: "All material findings cite primary source IDs (LCTR-NNN, AMD-NNN, EA-NNN); management Q&A statements clearly distinguished from source-verified facts; contradictions between management statements and primary sources explicitly flagged; assumptions and limitations section identifies evidence gaps; calibrated language used throughout ('appears to,' 'may indicate,' 'subject to further review')"
+      2: "Most findings cite source IDs but one material finding relies on management Q&A without verification; management/source distinction present but inconsistent; some calibrated language but occasional definitive assertions"
+      1: "Material findings lack source citations; management statements and verified facts not distinguished; no evidence gap disclosure; definitive legal advice language used"
