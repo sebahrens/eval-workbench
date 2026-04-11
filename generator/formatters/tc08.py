@@ -146,6 +146,7 @@ def _write_time_records_csv(
         "activity_description",
     ]
 
+    abs_path.parent.mkdir(parents=True, exist_ok=True)
     with open(abs_path, "w", newline="") as f:
         f.write(canary_line)
         f.write(",".join(columns) + "\n")
