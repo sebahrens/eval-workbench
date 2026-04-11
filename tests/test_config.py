@@ -7,7 +7,16 @@ from pathlib import Path
 
 import pytest
 
-from generator.config import Config, ConfigError, load_config
+from generator.config import (
+    Config,
+    ConfigError,
+    DifficultyProfile,
+    ErrorProfile,
+    OutputProfile,
+    deep_merge,
+    load_config,
+    load_layered_config,
+)
 from generator.model.entities import (
     ENTITIES,
     SUBSIDIARIES,
@@ -179,9 +188,9 @@ def test_bad_seasonal_weights_raises(minimal_yaml: Path) -> None:
 
 def test_unknown_top_level_key_rejected(minimal_yaml: Path) -> None:
     """Unknown top-level keys are rejected, not silently ignored."""
-    text = minimal_yaml.read_text() + "difficulty: hard\n"
+    text = minimal_yaml.read_text() + "packs: [accounting]\n"
     minimal_yaml.write_text(text)
-    with pytest.raises(ConfigError, match="Unknown key.*config root.*difficulty"):
+    with pytest.raises(ConfigError, match="Unknown key.*config root.*packs"):
         load_config(minimal_yaml)
 
 
@@ -209,13 +218,13 @@ def test_unknown_subsidiary_key_rejected(minimal_yaml: Path) -> None:
 
 def test_multiple_unknown_top_keys_all_reported(minimal_yaml: Path) -> None:
     """All unknown top-level keys appear in the error, not just the first."""
-    text = minimal_yaml.read_text() + "difficulty: hard\npacks: [accounting]\n"
+    text = minimal_yaml.read_text() + "packs: [accounting]\nworkflow: draft\n"
     minimal_yaml.write_text(text)
     with pytest.raises(ConfigError, match="Unknown key.*config root") as exc_info:
         load_config(minimal_yaml)
     msg = str(exc_info.value)
-    assert "difficulty" in msg
     assert "packs" in msg
+    assert "workflow" in msg
 
 
 def test_build_time_fields_accepted(minimal_yaml: Path) -> None:
@@ -365,3 +374,277 @@ def test_build_model_without_config_uses_hardcoded() -> None:
     model = build_model(seed=42)
     assert model.entities is ENTITIES
     assert model.subsidiaries is SUBSIDIARIES
+
+
+# ---------------------------------------------------------------------------
+# v1 customization profiles (synth-data-2u6.2)
+# ---------------------------------------------------------------------------
+
+class TestDifficultyProfile:
+    def test_defaults(self) -> None:
+        d = DifficultyProfile()
+        assert d.error_density == 1.0
+        assert d.canary_visibility == "visible"
+        assert d.judgment_trap_density == 1.0
+
+    def test_valid_values(self) -> None:
+        d = DifficultyProfile(error_density=0.3, canary_visibility="hidden", judgment_trap_density=0.5)
+        assert d.error_density == 0.3
+        assert d.canary_visibility == "hidden"
+
+    def test_error_density_out_of_range(self) -> None:
+        with pytest.raises(ConfigError, match="error_density must be 0.0"):
+            DifficultyProfile(error_density=1.5)
+
+    def test_error_density_negative(self) -> None:
+        with pytest.raises(ConfigError, match="error_density must be 0.0"):
+            DifficultyProfile(error_density=-0.1)
+
+    def test_invalid_canary_visibility(self) -> None:
+        with pytest.raises(ConfigError, match="canary_visibility"):
+            DifficultyProfile(canary_visibility="loud")
+
+    def test_judgment_trap_density_out_of_range(self) -> None:
+        with pytest.raises(ConfigError, match="judgment_trap_density"):
+            DifficultyProfile(judgment_trap_density=2.0)
+
+
+class TestOutputProfile:
+    def test_defaults(self) -> None:
+        o = OutputProfile()
+        assert o.enabled_test_cases == []
+        assert o.enabled_packs == []
+
+    def test_with_values(self) -> None:
+        o = OutputProfile(enabled_test_cases=["TC-01", "TC-06"], enabled_packs=["accounting"])
+        assert o.enabled_test_cases == ["TC-01", "TC-06"]
+        assert o.enabled_packs == ["accounting"]
+
+
+class TestErrorProfile:
+    def test_defaults(self) -> None:
+        e = ErrorProfile()
+        assert e.include == []
+        assert e.exclude == []
+        assert e.density_override is None
+
+    def test_valid(self) -> None:
+        e = ErrorProfile(include=["ERR-001"], exclude=["ERR-002"], density_override=0.5)
+        assert e.include == ["ERR-001"]
+        assert e.density_override == 0.5
+
+    def test_density_out_of_range(self) -> None:
+        with pytest.raises(ConfigError, match="density_override"):
+            ErrorProfile(density_override=1.5)
+
+    def test_overlap_rejected(self) -> None:
+        with pytest.raises(ConfigError, match="overlap"):
+            ErrorProfile(include=["ERR-001"], exclude=["ERR-001"])
+
+
+# ---------------------------------------------------------------------------
+# deep_merge tests (synth-data-2u6.2)
+# ---------------------------------------------------------------------------
+
+class TestDeepMerge:
+    def test_scalar_override(self) -> None:
+        assert deep_merge({"a": 1}, {"a": 2}) == {"a": 2}
+
+    def test_add_new_key(self) -> None:
+        assert deep_merge({"a": 1}, {"b": 2}) == {"a": 1, "b": 2}
+
+    def test_nested_dict_merge(self) -> None:
+        base = {"company": {"name": "Cascade", "revenue": 200}}
+        overlay = {"company": {"name": "Acme"}}
+        result = deep_merge(base, overlay)
+        assert result == {"company": {"name": "Acme", "revenue": 200}}
+
+    def test_list_replace(self) -> None:
+        base = {"years": [2023, 2024, 2025]}
+        overlay = {"years": [2024, 2025]}
+        result = deep_merge(base, overlay)
+        assert result == {"years": [2024, 2025]}
+
+    def test_null_deletes(self) -> None:
+        base = {"a": 1, "b": 2}
+        overlay = {"b": None}
+        result = deep_merge(base, overlay)
+        assert result == {"a": 1}
+
+    def test_null_deletes_nested(self) -> None:
+        base = {"company": {"subs": {"a": 1, "b": 2}}}
+        overlay = {"company": {"subs": {"b": None}}}
+        result = deep_merge(base, overlay)
+        assert result == {"company": {"subs": {"a": 1}}}
+
+    def test_base_unchanged(self) -> None:
+        base = {"a": 1, "b": {"c": 3}}
+        overlay = {"b": {"c": 99}}
+        deep_merge(base, overlay)
+        assert base == {"a": 1, "b": {"c": 3}}
+
+    def test_deeply_nested(self) -> None:
+        base = {"l1": {"l2": {"l3": {"val": 1, "keep": True}}}}
+        overlay = {"l1": {"l2": {"l3": {"val": 2}}}}
+        result = deep_merge(base, overlay)
+        assert result == {"l1": {"l2": {"l3": {"val": 2, "keep": True}}}}
+
+
+# ---------------------------------------------------------------------------
+# Config loading with profiles (synth-data-2u6.2)
+# ---------------------------------------------------------------------------
+
+def test_config_with_difficulty_section(minimal_yaml: Path) -> None:
+    text = minimal_yaml.read_text() + textwrap.dedent("""\
+        difficulty:
+          error_density: 0.3
+          canary_visibility: subtle
+    """)
+    minimal_yaml.write_text(text)
+    cfg = load_config(minimal_yaml)
+    assert cfg.difficulty.error_density == 0.3
+    assert cfg.difficulty.canary_visibility == "subtle"
+    assert cfg.difficulty.judgment_trap_density == 1.0  # default
+
+
+def test_config_with_output_section(minimal_yaml: Path) -> None:
+    text = minimal_yaml.read_text() + textwrap.dedent("""\
+        output:
+          enabled_test_cases: [TC-01, TC-06]
+          enabled_packs: [accounting]
+    """)
+    minimal_yaml.write_text(text)
+    cfg = load_config(minimal_yaml)
+    assert cfg.output.enabled_test_cases == ["TC-01", "TC-06"]
+    assert cfg.output.enabled_packs == ["accounting"]
+
+
+def test_config_with_errors_section(minimal_yaml: Path) -> None:
+    text = minimal_yaml.read_text() + textwrap.dedent("""\
+        errors:
+          include: [ERR-001]
+          exclude: [ERR-002]
+          density_override: 0.5
+    """)
+    minimal_yaml.write_text(text)
+    cfg = load_config(minimal_yaml)
+    assert cfg.errors.include == ["ERR-001"]
+    assert cfg.errors.exclude == ["ERR-002"]
+    assert cfg.errors.density_override == 0.5
+
+
+def test_config_without_profiles_has_defaults(minimal_yaml: Path) -> None:
+    cfg = load_config(minimal_yaml)
+    assert cfg.difficulty == DifficultyProfile()
+    assert cfg.output == OutputProfile()
+    assert cfg.errors == ErrorProfile()
+
+
+def test_difficulty_scalar_rejected(minimal_yaml: Path) -> None:
+    text = minimal_yaml.read_text() + "difficulty: hard\n"
+    minimal_yaml.write_text(text)
+    with pytest.raises(ConfigError, match="difficulty.*must be a mapping"):
+        load_config(minimal_yaml)
+
+
+def test_unknown_difficulty_key_rejected(minimal_yaml: Path) -> None:
+    text = minimal_yaml.read_text() + textwrap.dedent("""\
+        difficulty:
+          error_density: 0.5
+          level: hard
+    """)
+    minimal_yaml.write_text(text)
+    with pytest.raises(ConfigError, match="Unknown key.*difficulty.*level"):
+        load_config(minimal_yaml)
+
+
+def test_invalid_difficulty_value_rejected(minimal_yaml: Path) -> None:
+    text = minimal_yaml.read_text() + textwrap.dedent("""\
+        difficulty:
+          error_density: 2.0
+    """)
+    minimal_yaml.write_text(text)
+    with pytest.raises(ConfigError, match="error_density must be 0.0"):
+        load_config(minimal_yaml)
+
+
+# ---------------------------------------------------------------------------
+# Layered config loading (synth-data-2u6.2)
+# ---------------------------------------------------------------------------
+
+def test_layered_no_overlays_matches_base(minimal_yaml: Path) -> None:
+    base = load_config(minimal_yaml)
+    layered = load_layered_config(minimal_yaml)
+    assert layered.seed == base.seed
+    assert layered.company.name == base.company.name
+
+
+def test_layered_company_name_override(minimal_yaml: Path, tmp_path: Path) -> None:
+    overlay = tmp_path / "overlay.yaml"
+    overlay.write_text("company:\n  name: Acme Corp\n")
+    cfg = load_layered_config(minimal_yaml, layers=[overlay])
+    assert cfg.company.name == "Acme Corp"
+    # Other company fields preserved from base
+    assert cfg.company.type == "C-Corp"
+    assert len(cfg.company.subsidiaries) == 1
+
+
+def test_layered_seed_override(minimal_yaml: Path, tmp_path: Path) -> None:
+    overlay = tmp_path / "overlay.yaml"
+    overlay.write_text("seed: 99\n")
+    cfg = load_layered_config(minimal_yaml, layers=[overlay])
+    assert cfg.seed == 99
+
+
+def test_layered_difficulty_overlay(minimal_yaml: Path, tmp_path: Path) -> None:
+    overlay = tmp_path / "overlay.yaml"
+    overlay.write_text(textwrap.dedent("""\
+        difficulty:
+          error_density: 0.3
+          canary_visibility: hidden
+    """))
+    cfg = load_layered_config(minimal_yaml, layers=[overlay])
+    assert cfg.difficulty.error_density == 0.3
+    assert cfg.difficulty.canary_visibility == "hidden"
+
+
+def test_layered_multiple_overlays(minimal_yaml: Path, tmp_path: Path) -> None:
+    layer1 = tmp_path / "layer1.yaml"
+    layer1.write_text("company:\n  name: Layer1 Corp\nseed: 10\n")
+    layer2 = tmp_path / "layer2.yaml"
+    layer2.write_text("seed: 20\n")  # Override seed again
+    cfg = load_layered_config(minimal_yaml, layers=[layer1, layer2])
+    assert cfg.company.name == "Layer1 Corp"  # From layer1
+    assert cfg.seed == 20  # From layer2 (last wins)
+
+
+def test_layered_null_deletes_subsidiary(minimal_yaml: Path, tmp_path: Path) -> None:
+    # First add a second subsidiary to the base
+    base_text = minimal_yaml.read_text().replace(
+        "          employee_count: 100",
+        "          employee_count: 100\n"
+        "    sub_b:\n"
+        "      legal_name: Sub B LLC\n"
+        "      location: Austin, TX\n"
+        "      state: TX\n"
+        "      entity_code: SB\n"
+        "      revenue: 50000000\n"
+        "      type: Services\n"
+        "      gross_margin: 0.40\n"
+        "      employee_count: 50",
+    )
+    minimal_yaml.write_text(base_text)
+
+    # Overlay that removes sub_b
+    overlay = tmp_path / "overlay.yaml"
+    overlay.write_text("company:\n  subsidiaries:\n    sub_b: null\n")
+    cfg = load_layered_config(minimal_yaml, layers=[overlay])
+    assert "sub_a" in cfg.company.subsidiaries
+    assert "sub_b" not in cfg.company.subsidiaries
+
+
+def test_layered_rejects_unknown_in_overlay(minimal_yaml: Path, tmp_path: Path) -> None:
+    overlay = tmp_path / "overlay.yaml"
+    overlay.write_text("packs: [accounting]\n")
+    with pytest.raises(ConfigError, match="Unknown key.*config root"):
+        load_layered_config(minimal_yaml, layers=[overlay])
