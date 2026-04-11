@@ -22,6 +22,7 @@ class ManifestEntry:
     canary: str = ""              # 8-char canary code, if applicable
     test_cases: list[str] = field(default_factory=list)  # Which TCs use this file
     scenario_pack: str = ""       # Pack ID that produced this file (optional)
+    augmentation_source: str | None = None  # None=no augmentation, "cache:<hash>", "baseline"
 
 
 class Manifest:
@@ -124,6 +125,8 @@ class Manifest:
             }
             if e.scenario_pack:
                 d["scenario_pack"] = e.scenario_pack
+            if e.augmentation_source is not None:
+                d["augmentation_source"] = e.augmentation_source
             result.append(d)
         return result
 

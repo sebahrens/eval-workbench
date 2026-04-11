@@ -77,12 +77,21 @@ class CompanyConfig:
 
 
 @dataclass(frozen=True)
+class AugmentationConfig:
+    enabled: bool = False
+    model: str = ""
+    cache_dir: str = ".augmentation_cache"
+    warm_on_miss: bool = False
+
+
+@dataclass(frozen=True)
 class Config:
     seed: int
     output_dir: str
     company: CompanyConfig
     canary_assignments: dict[str, str]
     error_injections: dict[str, Any]
+    augmentation: AugmentationConfig = field(default_factory=AugmentationConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -180,10 +189,19 @@ def load_config(path: str | Path) -> Config:
 
     company = _parse_company(raw["company"])
 
+    aug_raw = raw.get("augmentation") or {}
+    augmentation = AugmentationConfig(
+        enabled=bool(aug_raw.get("enabled", False)),
+        model=str(aug_raw.get("model", "")),
+        cache_dir=str(aug_raw.get("cache_dir", ".augmentation_cache")),
+        warm_on_miss=bool(aug_raw.get("warm_on_miss", False)),
+    )
+
     return Config(
         seed=int(raw["seed"]),
         output_dir=raw["output_dir"],
         company=company,
         canary_assignments=raw.get("canary_assignments") or {},
         error_injections=raw.get("error_injections") or {},
+        augmentation=augmentation,
     )
