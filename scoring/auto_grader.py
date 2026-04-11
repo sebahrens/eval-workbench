@@ -298,6 +298,7 @@ class TestCaseGrader:
         self._expected = self._gold.get("expected_outputs", {})
         self._canaries = self._gold.get("canary_verification", {})
         self._errors = self._gold.get("error_detection", {})
+        self._evidence = self._gold.get("evidence_expectations", {})
 
     # -- Dimension graders ----------------------------------------------------
 
@@ -551,6 +552,88 @@ class TestCaseGrader:
 
         return DimensionResult(dimension="error_detection", score=score, checks=checks)
 
+    def check_evidence(self) -> DimensionResult:
+        """Check if the agent cited required sources and key terms.
+
+        Searches agent output for the ``required_sources`` and
+        ``acceptable_terms`` defined in each finding's evidence expectations.
+        Golds without ``evidence_expectations`` score 3 automatically.
+        """
+        checks: list[CheckResult] = []
+
+        if not self._evidence:
+            return DimensionResult(dimension="evidence", score=3, checks=[
+                CheckResult(name="no_evidence", status="pass",
+                            detail="No evidence expectations for this test case"),
+            ])
+
+        # Collect all agent output text once
+        agent_texts: list[str] = []
+        for fpath in sorted(self.agent_path.rglob("*")):
+            if fpath.is_file():
+                try:
+                    agent_texts.append(
+                        fpath.read_text(encoding="utf-8", errors="replace")
+                    )
+                except Exception:
+                    pass
+        full_text = "\n".join(agent_texts).lower()
+
+        passed = 0
+        for finding_id, spec in sorted(self._evidence.items()):
+            required_sources = spec.get("required_sources", [])
+            acceptable_terms = spec.get("acceptable_terms", [])
+            primary_required = spec.get("primary_source_required", False)
+
+            # Check source citations
+            sources_found = [s for s in required_sources if s.lower() in full_text]
+            sources_missing = [s for s in required_sources if s.lower() not in full_text]
+
+            # Check terms
+            terms_found = [t for t in acceptable_terms if t.lower() in full_text]
+
+            # Evaluate: source pass if all required sources cited
+            source_ok = len(sources_missing) == 0 if required_sources else True
+            # If primary required, at least one source must be present
+            if primary_required and not sources_found:
+                source_ok = False
+            # Term pass if at least one acceptable term found
+            term_ok = len(terms_found) > 0 if acceptable_terms else True
+
+            finding_pass = source_ok and term_ok
+
+            detail_parts = []
+            if sources_missing:
+                detail_parts.append(f"Missing sources: {sources_missing}")
+            if acceptable_terms and not terms_found:
+                detail_parts.append("No acceptable terms found")
+
+            checks.append(CheckResult(
+                name=f"evidence_{finding_id}",
+                status="pass" if finding_pass else "fail",
+                expected={
+                    "required_sources": required_sources,
+                    "acceptable_terms": acceptable_terms,
+                },
+                actual={
+                    "sources_found": sources_found,
+                    "terms_found": terms_found,
+                },
+                detail="; ".join(detail_parts) if detail_parts else "",
+            ))
+            if finding_pass:
+                passed += 1
+
+        total = len(self._evidence)
+        if passed == total:
+            score = 3
+        elif passed >= total * 0.5:
+            score = 2
+        else:
+            score = 1
+
+        return DimensionResult(dimension="evidence", score=score, checks=checks)
+
     # -- Full grading ---------------------------------------------------------
 
     def grade(self) -> GradeReport:
@@ -561,6 +644,9 @@ class TestCaseGrader:
         report.dimensions["format"] = self.grade_format()
         report.dimensions["canaries"] = self.verify_canaries()
         report.dimensions["error_detection"] = self.check_error_detection()
+        evidence = self.check_evidence()
+        if self._evidence:
+            report.dimensions["evidence"] = evidence
         return report
 
     # -- Helpers --------------------------------------------------------------
@@ -845,6 +931,40 @@ class SelfTestGrader(TestCaseGrader):
 
         return DimensionResult(dimension="canaries", score=score, checks=checks)
 
+    def check_evidence(self) -> DimensionResult:
+        """In self-test, verify evidence expectations are well-formed."""
+        checks: list[CheckResult] = []
+
+        if not self._evidence:
+            return DimensionResult(dimension="evidence", score=3, checks=[
+                CheckResult(name="no_evidence", status="pass",
+                            detail="No evidence expectations for this test case"),
+            ])
+
+        for finding_id, spec in sorted(self._evidence.items()):
+            issues: list[str] = []
+            if not isinstance(spec, dict):
+                issues.append("spec is not a dict")
+            else:
+                sources = spec.get("required_sources", [])
+                terms = spec.get("acceptable_terms", [])
+                if not isinstance(sources, list) or not sources:
+                    issues.append("required_sources missing or empty")
+                if not isinstance(terms, list) or not terms:
+                    issues.append("acceptable_terms missing or empty")
+
+            checks.append(CheckResult(
+                name=f"evidence_{finding_id}",
+                status="pass" if not issues else "fail",
+                expected="well-formed evidence spec",
+                actual=spec,
+                detail="; ".join(issues) if issues else "",
+            ))
+
+        failed = sum(1 for c in checks if c.status == "fail")
+        score = 3 if failed == 0 else (2 if failed == 1 else 1)
+        return DimensionResult(dimension="evidence", score=score, checks=checks)
+
 
 # ---------------------------------------------------------------------------
 # Aggregate summary
@@ -852,7 +972,8 @@ class SelfTestGrader(TestCaseGrader):
 
 def aggregate_reports(reports: list[GradeReport]) -> dict[str, Any]:
     """Build an aggregate summary across all graded test cases."""
-    dimensions = ["correctness", "completeness", "format", "canaries", "error_detection"]
+    dimensions = ["correctness", "completeness", "format", "canaries", "error_detection",
+                  "evidence"]
     summary: dict[str, Any] = {
         "total_test_cases": len(reports),
         "per_dimension": {},
