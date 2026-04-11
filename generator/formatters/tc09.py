@@ -1274,6 +1274,95 @@ def _write_tp_report_pdf(
             ))
         story.append(PageBreak())
 
+    # Page 39: Multi-year trend analysis
+    story.append(Paragraph(
+        "12. Benchmarking Results (continued) — Multi-Year Trend",
+        heading_style,
+    ))
+    story.append(Paragraph(
+        "The following table summarizes the three-year operating margin "
+        "trends for each accepted comparable company. Consistent margins "
+        "across years increase confidence in the benchmarking results.",
+        body_style,
+    ))
+    trend_data = [["Company", "FY2022", "FY2023", "FY2024", "3-Yr Avg"]]
+    # Deterministic pseudo-historical margins based on FY2024 margin
+    for name, sic, rev, _cogs, _opex, oi, _assets, rej in _COMPANY_PROFILES:
+        if not rej:
+            m24 = oi / rev if rev else 0
+            # Prior years: slight variation around FY2024 margin
+            m22 = m24 - 0.005
+            m23 = m24 + 0.002
+            avg = (m22 + m23 + m24) / 3
+            trend_data.append([
+                name, f"{m22:.1%}", f"{m23:.1%}", f"{m24:.1%}", f"{avg:.1%}",
+            ])
+    t = Table(trend_data, colWidths=[2.2 * inch, 1 * inch, 1 * inch, 1 * inch, 1 * inch])
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4472C4")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+    ]))
+    story.append(t)
+    story.append(Spacer(1, 0.3 * inch))
+    story.append(Paragraph(
+        "The three-year trend data confirms relative stability in "
+        "comparable company margins, supporting the reliability of the "
+        "single-year benchmarking analysis. No significant outliers or "
+        "structural shifts were identified in the trend data.",
+        body_style,
+    ))
+    story.append(PageBreak())
+
+    # Page 40: Statistical methodology
+    story.append(Paragraph(
+        "12. Benchmarking Results (continued) — Statistical Methodology",
+        heading_style,
+    ))
+    story.append(Paragraph(
+        "The interquartile range was computed using the QUARTILE.INC "
+        "function methodology (equivalent to Excel QUARTILE.INC), which "
+        "interpolates between data points to determine the 25th and 75th "
+        "percentile values.",
+        body_style,
+    ))
+    story.append(Paragraph("Computation Detail", heading2_style))
+    story.append(Paragraph(
+        "The 10 accepted comparable operating margins, sorted in ascending "
+        "order, are: 2.8%, 3.5%, 4.0%, 4.8%, 5.6%, 6.8%, 8.4%, 8.8%, "
+        "9.5%, 11.2%. Using the QUARTILE.INC method:",
+        body_style,
+    ))
+    stat_data = [
+        ["Measure", "Calculation", "Result"],
+        ["Q1 (25th pct)", "Position = 1 + 0.25 × 9 = 3.25 → "
+         "interpolate between 4.0% and 4.8%", "4.2%"],
+        ["Median (50th pct)", "Position = 1 + 0.50 × 9 = 5.50 → "
+         "interpolate between 5.6% and 6.8%", "6.2%"],
+        ["Q3 (75th pct)", "Position = 1 + 0.75 × 9 = 7.75 → "
+         "interpolate between 8.4% and 8.8%", "8.7%"],
+        ["IQR", "Q3 − Q1", "4.5%"],
+    ]
+    t = Table(stat_data, colWidths=[1.3 * inch, 3.5 * inch, 1 * inch])
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4472C4")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+    story.append(t)
+    story.append(Spacer(1, 0.3 * inch))
+    story.append(Paragraph(
+        "The IQR of 4.2% to 8.7% represents the arm's length range for "
+        "operating margins. Transactions falling within this range are "
+        "considered to satisfy the arm's length standard without adjustment.",
+        body_style,
+    ))
+    story.append(PageBreak())
+
     # ── Pages 31-38 results section done ──────────────────────
 
     # ── Pages 39-40: Results and Conclusions ──────────────────
@@ -1381,6 +1470,41 @@ def _write_tp_report_pdf(
             body_style,
         ))
         story.append(PageBreak())
+    # Appendix A — subsidiary income summaries
+    story.append(Paragraph(
+        "14. Appendix A (continued) — Subsidiary Income Summaries",
+        heading_style,
+    ))
+    story.append(Paragraph(
+        "The following table presents the FY2024 income summary for each "
+        "subsidiary on a standalone (pre-elimination) basis:",
+        body_style,
+    ))
+    sub_data = [
+        ["", "PC", "AM", "DS", "CI (Parent)"],
+        ["Revenue", "$92.1M", "$63.4M", "$39.5M", "$195.0M*"],
+        ["IC Revenue", "$7.2M", "—", "$4.8M", "—"],
+        ["Total COGS", "$65.4M", "$42.8M", "$28.1M", "$128.0M*"],
+        ["Gross Profit", "$26.7M", "$20.6M", "$11.4M", "$67.0M*"],
+        ["SG&A", "$16.8M", "$14.2M", "$7.6M", "$42.0M*"],
+        ["Operating Income", "$9.9M", "$6.4M", "$3.8M", "$25.0M*"],
+    ]
+    t = Table(sub_data, colWidths=[1.5 * inch, 1.2 * inch, 1.2 * inch,
+                                    1.2 * inch, 1.5 * inch])
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4472C4")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+    ]))
+    story.append(t)
+    story.append(Spacer(1, 0.2 * inch))
+    story.append(Paragraph(
+        "* Consolidated figures are after intercompany eliminations.",
+        small_style,
+    ))
+    story.append(PageBreak())
 
     # ── Pages 38-40 (Appendix B): Comparable Company Data ─────
     story.append(Paragraph("15. Appendix B: Comparable Company Data", heading_style))
@@ -1396,6 +1520,42 @@ def _write_tp_report_pdf(
         "Full comparable company financial profiles are maintained "
         "in the transfer pricing documentation workfiles and are "
         "available for regulatory review upon request.",
+        body_style,
+    ))
+    story.append(PageBreak())
+    # Appendix B — asset intensity comparison
+    story.append(Paragraph(
+        "15. Appendix B (continued) — Asset Intensity Analysis",
+        heading_style,
+    ))
+    story.append(Paragraph(
+        "The following table compares total assets and asset turnover "
+        "ratios for the accepted comparable companies, demonstrating "
+        "similar capital intensity to Cascade's operations:",
+        body_style,
+    ))
+    asset_data = [["Company", "Total Assets ($M)", "Revenue ($M)",
+                   "Asset Turnover"]]
+    for name, sic, rev, _cogs, _opex, _oi, assets, rej in _COMPANY_PROFILES:
+        if not rej:
+            turnover = rev / assets if assets else 0
+            asset_data.append([name, str(assets), str(rev), f"{turnover:.2f}x"])
+    t = Table(asset_data, colWidths=[2.5 * inch, 1.3 * inch, 1.3 * inch, 1.2 * inch])
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4472C4")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+    ]))
+    story.append(t)
+    story.append(Spacer(1, 0.3 * inch))
+    story.append(Paragraph(
+        "The median asset turnover ratio of the comparable set is "
+        "approximately 0.91x, consistent with mid-market manufacturing "
+        "companies. Cascade's consolidated asset turnover of approximately "
+        "0.85x is within the range, supporting the comparability of the "
+        "selected companies.",
         body_style,
     ))
     story.append(PageBreak())
