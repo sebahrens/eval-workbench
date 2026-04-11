@@ -3,10 +3,20 @@
 import random
 from decimal import Decimal
 
+from generator.config import (
+    CompanyConfig,
+    Config,
+    EmployeeConfig,
+    GrowthRates,
+    IntercompanyConfig,
+    SeasonalWeights,
+    SubsidiaryConfig,
+)
 from generator.model.gl import Ledger
 from generator.model.revenue import (
     PRODUCT_LINES,
     MonthlyRevenue,
+    _quarterly_to_monthly,
     generate_monthly_revenue,
     post_revenue_to_gl,
     validate_consolidated_growth,
@@ -209,3 +219,139 @@ class TestDeterminism:
             assert a.month == b.month
             assert a.entity_code == b.entity_code
             assert a.product_line == b.product_line
+
+
+# ── Config-driven seasonal weights ────────────────────────────────────────
+
+def _make_cascade_config(seasonal: SeasonalWeights | None = None) -> Config:
+    """Build a Config matching Cascade defaults, optionally with custom seasonal weights."""
+    sw = seasonal or SeasonalWeights(Q1=0.20, Q2=0.25, Q3=0.25, Q4=0.30)
+    return Config(
+        seed=42,
+        output_dir="test_suite",
+        company=CompanyConfig(
+            name="Cascade Industries, Inc.",
+            type="US C-Corporation",
+            industry="Mid-market manufacturer",
+            headquarters="Portland, Oregon",
+            fiscal_year_end="12-31",
+            years=[2023, 2024, 2025],
+            current_year=2025,
+            consolidated_revenue=200_000_000,
+            subsidiaries={
+                "precision_components": SubsidiaryConfig(
+                    legal_name="Cascade Precision Components LLC",
+                    location="Portland, OR", state="OR", entity_code="PC",
+                    revenue=95_000_000, type="Core manufacturing",
+                    gross_margin=0.35, employee_count=350,
+                ),
+                "advanced_materials": SubsidiaryConfig(
+                    legal_name="Cascade Advanced Materials, Inc.",
+                    location="Austin, TX", state="TX", entity_code="AM",
+                    revenue=65_000_000, type="Specialty materials",
+                    gross_margin=0.52, employee_count=280, rd_spend_pct=0.12,
+                ),
+                "distribution_services": SubsidiaryConfig(
+                    legal_name="Cascade Distribution Services LLC",
+                    location="Chicago, IL", state="IL", entity_code="DS",
+                    revenue=40_000_000, type="Warehousing and logistics",
+                    gross_margin=0.18, employee_count=220,
+                ),
+            },
+            growth_rates=GrowthRates(fy2023_to_fy2024=0.06, fy2024_to_fy2025=0.09),
+            intercompany=IntercompanyConfig(
+                raw_materials_markup=0.08, management_fee_pct=0.015,
+                intercompany_loan_principal=5_000_000, intercompany_loan_rate=0.05,
+            ),
+            employees=EmployeeConfig(total_count=850, annual_turnover_rate=0.08),
+            seasonal_weights=sw,
+        ),
+        canary_assignments={},
+        error_injections={},
+    )
+
+
+class TestConfigSeasonalWeights:
+    """Revenue generation respects custom seasonal weights from config."""
+
+    def test_default_config_matches_hardcoded(self) -> None:
+        """Config with Cascade defaults produces same annual totals as no-config path."""
+        cfg = _make_cascade_config()
+        r_default = generate_monthly_revenue(random.Random(42))
+        r_config = generate_monthly_revenue(random.Random(42), config=cfg)
+        # Annual totals per entity must match
+        for entity in ("PC", "AM", "DS"):
+            for year in (2023, 2024, 2025):
+                total_def = sum(r.revenue for r in r_default if r.entity_code == entity and r.year == year)
+                total_cfg = sum(r.revenue for r in r_config if r.entity_code == entity and r.year == year)
+                assert abs(total_def - total_cfg) < 1, (
+                    f"{entity} FY{year}: default={total_def}, config={total_cfg}"
+                )
+
+    def test_flat_seasonal_weights(self) -> None:
+        """Flat quarterly weights (0.25 each) produce roughly uniform quarters."""
+        cfg = _make_cascade_config(SeasonalWeights(Q1=0.25, Q2=0.25, Q3=0.25, Q4=0.25))
+        records = generate_monthly_revenue(random.Random(42), config=cfg)
+        fy25 = [r for r in records if r.year == 2025]
+        quarters: dict[int, Decimal] = {}
+        for r in fy25:
+            q = (r.month - 1) // 3 + 1
+            quarters[q] = quarters.get(q, Decimal(0)) + r.revenue
+        total = sum(quarters.values())
+        for q, amt in quarters.items():
+            share = float(amt / total)
+            assert abs(share - 0.25) < 0.02, f"Q{q} share {share:.3f} deviates from 0.25"
+
+    def test_q1_heavy_reverses_pattern(self) -> None:
+        """Q1-heavy weights make Q1 the largest quarter (opposite of default)."""
+        cfg = _make_cascade_config(SeasonalWeights(Q1=0.40, Q2=0.20, Q3=0.20, Q4=0.20))
+        records = generate_monthly_revenue(random.Random(42), config=cfg)
+        fy25 = [r for r in records if r.year == 2025]
+        quarters: dict[int, Decimal] = {}
+        for r in fy25:
+            q = (r.month - 1) // 3 + 1
+            quarters[q] = quarters.get(q, Decimal(0)) + r.revenue
+        assert quarters[1] == max(quarters.values()), (
+            f"Q1 should be largest but got: {quarters}"
+        )
+
+    def test_custom_weights_preserve_annual_totals(self) -> None:
+        """Custom seasonal weights don't change annual totals — only monthly distribution."""
+        cfg = _make_cascade_config(SeasonalWeights(Q1=0.10, Q2=0.30, Q3=0.30, Q4=0.30))
+        records = generate_monthly_revenue(random.Random(42), config=cfg)
+        for entity in ("PC", "AM", "DS"):
+            total = sum(r.revenue for r in records if r.entity_code == entity and r.year == 2025)
+            expected = {"PC": 95_000_000, "AM": 65_000_000, "DS": 40_000_000}[entity]
+            assert abs(total - Decimal(expected)) < 1, f"{entity} FY25: {total}"
+
+    def test_determinism_with_config(self) -> None:
+        """Same config + seed → identical output."""
+        cfg = _make_cascade_config(SeasonalWeights(Q1=0.15, Q2=0.35, Q3=0.25, Q4=0.25))
+        r1 = generate_monthly_revenue(random.Random(42), config=cfg)
+        r2 = generate_monthly_revenue(random.Random(42), config=cfg)
+        assert len(r1) == len(r2)
+        for a, b in zip(r1, r2):
+            assert a.revenue == b.revenue
+
+
+class TestQuarterlyToMonthly:
+    """Unit tests for the _quarterly_to_monthly helper."""
+
+    def test_weights_sum_to_one(self) -> None:
+        monthly = _quarterly_to_monthly(0.20, 0.25, 0.25, 0.30)
+        assert abs(sum(monthly) - 1.0) < 1e-9
+
+    def test_twelve_months(self) -> None:
+        monthly = _quarterly_to_monthly(0.25, 0.25, 0.25, 0.25)
+        assert len(monthly) == 12
+
+    def test_quarter_totals_preserved(self) -> None:
+        monthly = _quarterly_to_monthly(0.10, 0.30, 0.35, 0.25)
+        q1 = sum(monthly[0:3])
+        q2 = sum(monthly[3:6])
+        q3 = sum(monthly[6:9])
+        q4 = sum(monthly[9:12])
+        assert abs(q1 - 0.10) < 0.01
+        assert abs(q2 - 0.30) < 0.01
+        assert abs(q3 - 0.35) < 0.01
+        assert abs(q4 - 0.25) < 0.01

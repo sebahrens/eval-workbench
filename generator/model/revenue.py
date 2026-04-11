@@ -27,9 +27,13 @@ import datetime
 import random
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
+from typing import TYPE_CHECKING
 
-from generator.model.entities import SUBSIDIARIES
+from generator.model.entities import SUBSIDIARIES, entities_from_config
 from generator.model.gl import JournalEntry, JournalEntryLine, Ledger
+
+if TYPE_CHECKING:
+    from generator.config import Config
 
 # ── Entity-level growth rates ───────────────────────────────────────────────
 # Calibrated so consolidated FY24→25 growth = 9.2%.
@@ -144,6 +148,17 @@ _RESIDUAL_PRODUCT_LINES = {"Advanced Composites", "Freight & Logistics"}
 
 # ── Monthly seasonal weights ────────────────────────────────────────────────
 
+# Intra-quarter distribution ratios (how each quarter splits across its 3 months).
+# These are relative ratios within each quarter, derived from the default
+# monthly weights below.  When config supplies custom quarterly totals,
+# these ratios are applied to distribute each quarter's total to months.
+_INTRA_QUARTER_RATIOS: tuple[tuple[float, float, float], ...] = (
+    (0.300, 0.325, 0.375),  # Q1: Jan, Feb, Mar
+    (0.320, 0.340, 0.340),  # Q2: Apr, May, Jun
+    (0.340, 0.340, 0.320),  # Q3: Jul, Aug, Sep
+    (0.3167, 0.3333, 0.3500),  # Q4: Oct, Nov, Dec
+)
+
 _MONTHLY_WEIGHTS: tuple[float, ...] = (
     # Q1: 0.20 total — Q1 dip
     0.060, 0.065, 0.075,
@@ -156,6 +171,18 @@ _MONTHLY_WEIGHTS: tuple[float, ...] = (
 )
 
 assert abs(sum(_MONTHLY_WEIGHTS) - 1.0) < 1e-9, "Monthly weights must sum to 1.0"
+
+
+def _quarterly_to_monthly(q1: float, q2: float, q3: float, q4: float) -> tuple[float, ...]:
+    """Convert quarterly weights to monthly weights using intra-quarter ratios."""
+    quarterly = (q1, q2, q3, q4)
+    monthly = []
+    for qi, (r1, r2, r3) in enumerate(_INTRA_QUARTER_RATIOS):
+        total = quarterly[qi]
+        monthly.extend([total * r1, total * r2, total * r3])
+    # Normalize to handle rounding in ratios
+    s = sum(monthly)
+    return tuple(w / s for w in monthly)
 
 
 # ── Annual revenue table ───────────────────────────────────────────────────
@@ -174,11 +201,33 @@ class MonthlyRevenue:
     cogs_account: str
 
 
-def _build_annual_table() -> dict[tuple[str, int], Decimal]:
+def _build_annual_table(
+    subsidiaries: dict[str, object] | None = None,
+    entity_growth_fy24_to_fy25: dict[str, Decimal] | None = None,
+    fy23_to_fy24_growth: Decimal | None = None,
+) -> dict[tuple[str, int], Decimal]:
     """Build product-line annual revenue for all years.
+
+    Parameters
+    ----------
+    subsidiaries : dict, optional
+        Entity code → object with ``revenue_target`` attribute.
+        Defaults to the hardcoded ``SUBSIDIARIES``.
+    entity_growth_fy24_to_fy25 : dict, optional
+        Per-entity FY24→FY25 growth rates.  Defaults to the calibrated
+        ``_ENTITY_GROWTH_FY24_TO_FY25``.
+    fy23_to_fy24_growth : Decimal, optional
+        Uniform FY23→FY24 growth.  Defaults to ``_ENTITY_GROWTH_FY23_TO_FY24``.
 
     Returns {(product_line_name, year): annual_revenue}.
     """
+    subs = subsidiaries if subsidiaries is not None else SUBSIDIARIES
+    growth_fy24_25 = (
+        entity_growth_fy24_to_fy25 if entity_growth_fy24_to_fy25 is not None
+        else _ENTITY_GROWTH_FY24_TO_FY25
+    )
+    growth_fy23_24 = fy23_to_fy24_growth if fy23_to_fy24_growth is not None else _ENTITY_GROWTH_FY23_TO_FY24
+
     table: dict[tuple[str, int], Decimal] = {}
 
     # Group product lines by entity
@@ -187,8 +236,8 @@ def _build_annual_table() -> dict[tuple[str, int], Decimal]:
         by_entity.setdefault(pl.entity_code, []).append(pl)
 
     for entity_code, pls in sorted(by_entity.items()):
-        entity_fy25 = Decimal(SUBSIDIARIES[entity_code].revenue_target)
-        entity_fy24 = entity_fy25 / (1 + _ENTITY_GROWTH_FY24_TO_FY25[entity_code])
+        entity_fy25 = Decimal(subs[entity_code].revenue_target)
+        entity_fy24 = entity_fy25 / (1 + growth_fy24_25[entity_code])
 
         # Identify the residual product line for this entity
         residual_pl = None
@@ -226,10 +275,10 @@ def _build_annual_table() -> dict[tuple[str, int], Decimal]:
             # (PC has uniform growth, so both match entity total naturally)
             pass
 
-        # FY2023: uniform 6% growth for all product lines within entity
+        # FY2023: uniform growth for all product lines within entity
         for pl in pls:
             fy24 = table[(pl.name, 2024)]
-            fy23 = (fy24 / (1 + _ENTITY_GROWTH_FY23_TO_FY24)).quantize(
+            fy23 = (fy24 / (1 + growth_fy23_24)).quantize(
                 Decimal("0.01"), rounding=ROUND_HALF_UP
             )
             table[(pl.name, 2023)] = fy23
@@ -244,21 +293,51 @@ _ANNUAL_TABLE = _build_annual_table()
 def generate_monthly_revenue(
     rng: random.Random,
     years: list[int] | None = None,
+    config: Config | None = None,
 ) -> list[MonthlyRevenue]:
     """Generate monthly revenue and COGS for all product lines across all years.
 
     Uses seasonal monthly weights with small random perturbation for realism.
     The perturbation is seeded via ``rng`` for determinism.
 
+    Parameters
+    ----------
+    rng : random.Random
+        Seeded PRNG for monthly perturbation.
+    years : list[int], optional
+        Fiscal years to generate. Defaults to [2023, 2024, 2025].
+    config : Config, optional
+        When provided, revenue targets come from config subsidiaries,
+        growth rates from ``config.company.growth_rates``, and seasonal
+        weights from ``config.company.seasonal_weights``.  Without config,
+        the hardcoded Cascade defaults are used.
+
     Returns a sorted list of MonthlyRevenue records (by year, month, entity, product).
     """
     if years is None:
         years = [2023, 2024, 2025]
 
-    gross_margins: dict[str, Decimal] = {
-        code: Decimal(str(entity.gross_margin))
-        for code, entity in SUBSIDIARIES.items()
-    }
+    # Resolve parameters from config or defaults
+    if config is not None:
+        _, subs = entities_from_config(config.company)
+        fy23_24 = Decimal(str(config.company.growth_rates.fy2023_to_fy2024))
+        annual_table = _build_annual_table(
+            subsidiaries=subs,
+            fy23_to_fy24_growth=fy23_24,
+        )
+        sw = config.company.seasonal_weights
+        base_weights = _quarterly_to_monthly(sw.Q1, sw.Q2, sw.Q3, sw.Q4)
+        gross_margins: dict[str, Decimal] = {
+            code: Decimal(str(entity.gross_margin))
+            for code, entity in subs.items()
+        }
+    else:
+        annual_table = _ANNUAL_TABLE
+        base_weights = _MONTHLY_WEIGHTS
+        gross_margins = {
+            code: Decimal(str(entity.gross_margin))
+            for code, entity in SUBSIDIARIES.items()
+        }
 
     records: list[MonthlyRevenue] = []
 
@@ -266,11 +345,11 @@ def generate_monthly_revenue(
         margin = gross_margins[pl.entity_code]
 
         for year in sorted(years):
-            annual = _ANNUAL_TABLE[(pl.name, year)]
+            annual = annual_table[(pl.name, year)]
 
             # Apply monthly weights with small random perturbation (±2%)
             raw_weights = []
-            for w in _MONTHLY_WEIGHTS:
+            for w in base_weights:
                 perturbed = w * (1 + rng.uniform(-0.02, 0.02))
                 raw_weights.append(perturbed)
 

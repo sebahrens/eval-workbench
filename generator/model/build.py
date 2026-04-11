@@ -137,7 +137,7 @@ def build_model(config: Config | None = None, *, seed: int = 42) -> CascadeModel
     ledger = Ledger()
 
     # ── Revenue & COGS ──────────────────────────────────────────────
-    revenue_records = generate_monthly_revenue(rng)
+    revenue_records = generate_monthly_revenue(rng, config=config)
     post_revenue_to_gl(ledger, revenue_records)
 
     # ── Intercompany ────────────────────────────────────────────────
