@@ -81,6 +81,7 @@ def _write_ap_csv(
     canary = canaries.canary_for(_CSV_FILE_KEY)
     canary_line = embed_canary_csv_comment(canary)
 
+    abs_path.parent.mkdir(parents=True, exist_ok=True)
     with open(abs_path, "w", newline="") as f:
         f.write(canary_line)
         f.write(",".join(_CSV_COLUMNS) + "\n")
