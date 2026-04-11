@@ -82,8 +82,10 @@ def generate(
     with Manifest(output) as manifest:
         # ── Phase 2: Run pack emitters ───────────────────────────────
         for pack in packs:
+            manifest.set_current_pack(pack.pack_id)
             for emitter in pack.emitters:
                 emitter(model, output, canaries, errors, manifest)
+        manifest.set_current_pack("")
 
         # ── Emit gold standards ──────────────────────────────────────
         active_tcs = [tc for pack in packs for tc in pack.test_cases]

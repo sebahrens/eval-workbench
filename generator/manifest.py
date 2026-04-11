@@ -21,6 +21,7 @@ class ManifestEntry:
     size: int = 0                 # File size in bytes (populated after write)
     canary: str = ""              # 8-char canary code, if applicable
     test_cases: list[str] = field(default_factory=list)  # Which TCs use this file
+    scenario_pack: str = ""       # Pack ID that produced this file (optional)
 
 
 class Manifest:
@@ -38,6 +39,7 @@ class Manifest:
     def __init__(self, output_dir: Path) -> None:
         self._output_dir = output_dir
         self._entries: dict[str, ManifestEntry] = {}
+        self._current_pack: str = ""
 
     # -- context manager ------------------------------------------------------
 
@@ -51,6 +53,12 @@ class Manifest:
             self.write_json()
         return None
 
+    # -- pack context ---------------------------------------------------------
+
+    def set_current_pack(self, pack_id: str) -> None:
+        """Set the scenario pack ID for subsequent register() calls."""
+        self._current_pack = pack_id
+
     # -- registration ---------------------------------------------------------
 
     def register(
@@ -60,6 +68,7 @@ class Manifest:
         *,
         canary: str = "",
         test_cases: list[str] | None = None,
+        scenario_pack: str = "",
     ) -> None:
         """Register a file that has been (or will be) written.
 
@@ -73,12 +82,16 @@ class Manifest:
             Canary code embedded in this file, if any.
         test_cases:
             List of test case IDs that use this file (e.g. ["TC-01"]).
+        scenario_pack:
+            Pack ID that produced this file. If empty, uses the current
+            pack context set via :meth:`set_current_pack`.
         """
         self._entries[path] = ManifestEntry(
             path=path,
             type=file_type,
             canary=canary,
             test_cases=sorted(test_cases) if test_cases else [],
+            scenario_pack=scenario_pack or self._current_pack,
         )
 
     @property
@@ -102,13 +115,16 @@ class Manifest:
         result = []
         for key in sorted(self._entries):
             e = self._entries[key]
-            result.append({
+            d: dict = {
                 "path": e.path,
                 "type": e.type,
                 "size": e.size,
                 "canary": e.canary,
                 "test_cases": e.test_cases,
-            })
+            }
+            if e.scenario_pack:
+                d["scenario_pack"] = e.scenario_pack
+            result.append(d)
         return result
 
     def write_json(self, filename: str = "manifest.json") -> Path:

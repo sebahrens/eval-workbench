@@ -88,6 +88,94 @@ def test_orchestrator_produces_manifest(tmp_path: Path) -> None:
     assert "error_registry.json" in paths
 
 
+def test_scenario_pack_omitted_when_empty() -> None:
+    """Entries without a scenario_pack should not include the key in to_dict()."""
+    manifest = Manifest(Path("/tmp/fake"))
+    manifest.register("file.csv", "csv")
+
+    result = manifest.to_dict()
+    assert "scenario_pack" not in result[0]
+
+
+def test_scenario_pack_present_when_set() -> None:
+    """Entries with a scenario_pack include it in to_dict()."""
+    manifest = Manifest(Path("/tmp/fake"))
+    manifest.register("file.csv", "csv", scenario_pack="cascade_accounting_core")
+
+    result = manifest.to_dict()
+    assert result[0]["scenario_pack"] == "cascade_accounting_core"
+
+
+def test_scenario_pack_from_current_pack_context() -> None:
+    """set_current_pack() provides the default for subsequent register() calls."""
+    manifest = Manifest(Path("/tmp/fake"))
+    manifest.set_current_pack("cascade_accounting_core")
+    manifest.register("a.csv", "csv")
+    manifest.set_current_pack("ma_legal_hr_diligence")
+    manifest.register("b.csv", "csv")
+    manifest.set_current_pack("")
+    manifest.register("c.csv", "csv")
+
+    result = manifest.to_dict()
+    # Sorted by path: a.csv, b.csv, c.csv
+    assert result[0]["scenario_pack"] == "cascade_accounting_core"
+    assert result[1]["scenario_pack"] == "ma_legal_hr_diligence"
+    assert "scenario_pack" not in result[2]
+
+
+def test_scenario_pack_explicit_overrides_context() -> None:
+    """An explicit scenario_pack kwarg takes precedence over set_current_pack()."""
+    manifest = Manifest(Path("/tmp/fake"))
+    manifest.set_current_pack("cascade_accounting_core")
+    manifest.register("file.csv", "csv", scenario_pack="ma_legal_hr_diligence")
+
+    result = manifest.to_dict()
+    assert result[0]["scenario_pack"] == "ma_legal_hr_diligence"
+
+
+def test_scenario_pack_deterministic_in_json(tmp_path: Path) -> None:
+    """scenario_pack metadata is stable across reruns."""
+    for run_dir in ("run1", "run2"):
+        d = tmp_path / run_dir
+        d.mkdir()
+        (d / "a.csv").write_text("data")
+
+        with Manifest(d) as m:
+            m.set_current_pack("cascade_accounting_core")
+            m.register("a.csv", "csv", canary="AAAA1111")
+
+    content1 = (tmp_path / "run1" / "manifest.json").read_text()
+    content2 = (tmp_path / "run2" / "manifest.json").read_text()
+    assert content1 == content2
+    # Verify the key is present
+    data = json.loads(content1)
+    assert data[0]["scenario_pack"] == "cascade_accounting_core"
+
+
+def test_orchestrator_tags_entries_with_pack(tmp_path: Path) -> None:
+    """The orchestrator's generate() should tag manifest entries with scenario_pack."""
+    from generate_test_suite import generate
+    from generator.config import load_config
+
+    config = load_config("config.yaml")
+    output = tmp_path / "suite"
+
+    manifest = generate(config, output)
+    entries = manifest.to_dict()
+    # Every entry produced by a pack emitter should have scenario_pack
+    pack_entries = [e for e in entries if e.get("scenario_pack")]
+    assert len(pack_entries) > 0
+    # Default generation only runs accounting-core
+    packs_seen = {e["scenario_pack"] for e in pack_entries}
+    assert "cascade_accounting_core" in packs_seen
+    # Top-level registries (canary, error, scoring) are registered after
+    # set_current_pack(""), so they should NOT have scenario_pack
+    for path in ("canary_registry.json", "error_registry.json", "scoring/scoring_template.xlsx"):
+        entry = next((e for e in entries if e["path"] == path), None)
+        if entry:
+            assert "scenario_pack" not in entry, f"{path} should not have scenario_pack"
+
+
 def test_manifest_json_deterministic(tmp_path: Path) -> None:
     """Two identical registration sequences must produce byte-identical JSON."""
     for run_dir in ("run1", "run2"):
