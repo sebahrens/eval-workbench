@@ -18,6 +18,8 @@ from generator.model.ar import (
     generate_allowance,
     generate_ar_aging,
     generate_collections,
+    generate_invoices,
+    generate_receipts,
     post_collections_to_gl,
     validate_ar_equals_gl,
 )
@@ -288,3 +290,135 @@ class TestAPGLReconciliation:
             assert match, (
                 f"{ec}: AP aging total={aging_total} ≠ GL 2010={gl_balance}"
             )
+
+
+# ── Invoice lifecycle tests ───────────────────────────────────────────────
+
+
+class TestInvoices:
+    def test_invoices_generated(self):
+        records = _make_revenue()
+        invoices = generate_invoices(records)
+        assert len(invoices) > 0
+
+    def test_one_invoice_per_customer_per_month(self):
+        """Each entity×month should produce one invoice per customer."""
+        records = _make_revenue()
+        invoices = generate_invoices(records, years=[2025])
+        # 26 customers × 12 months = 312
+        assert len(invoices) == len(CUSTOMERS) * 12
+
+    def test_invoice_amounts_match_entity_revenue(self):
+        """Sum of customer invoices per entity×month = entity monthly revenue."""
+        records = _make_revenue()
+        invoices = generate_invoices(records, years=[2025])
+        # Sum invoices by (entity, month)
+        inv_totals: dict[tuple[str, int], Decimal] = {}
+        for inv in invoices:
+            key = (inv.entity_code, inv.month)
+            inv_totals[key] = inv_totals.get(key, Decimal(0)) + inv.amount
+
+        # Compare to revenue (whole dollars, same rounding as invoices)
+        from decimal import ROUND_HALF_UP as _RHU
+
+        rev_totals: dict[tuple[str, int], Decimal] = {}
+        for rec in records:
+            if rec.year != 2025:
+                continue
+            key = (rec.entity_code, rec.month)
+            rev = rec.revenue.quantize(Decimal("1"), rounding=_RHU)
+            rev_totals[key] = rev_totals.get(key, Decimal(0)) + rev
+
+        for key in sorted(inv_totals):
+            # Allow rounding tolerance of $1 per customer in that entity×month
+            entity_custs = sum(1 for c in CUSTOMERS if c.entity_code == key[0])
+            assert abs(inv_totals[key] - rev_totals[key]) <= entity_custs
+
+    def test_due_dates_reflect_dso(self):
+        records = _make_revenue()
+        invoices = generate_invoices(records, years=[2025])
+        for inv in invoices:
+            cust = next(c for c in CUSTOMERS if c.id == inv.customer_id)
+            expected_due = inv.issue_date + datetime.timedelta(days=cust.dso)
+            assert inv.due_date == expected_due
+
+    def test_deterministic(self):
+        inv1 = generate_invoices(_make_revenue())
+        inv2 = generate_invoices(_make_revenue())
+        assert len(inv1) == len(inv2)
+        for a, b in zip(inv1, inv2):
+            assert a.invoice_id == b.invoice_id
+            assert a.amount == b.amount
+
+
+# ── Receipt lifecycle tests ───────────────────────────────────────────────
+
+
+class TestReceipts:
+    def test_receipts_generated(self):
+        records = _make_revenue()
+        invoices = generate_invoices(records)
+        colls = generate_collections(records)
+        receipts = generate_receipts(invoices, colls)
+        assert len(receipts) > 0
+
+    def test_receipt_total_matches_invoice_total(self):
+        """Every invoice produces exactly one receipt for the full amount."""
+        records = _make_revenue()
+        invoices = generate_invoices(records)
+        receipts = generate_receipts(invoices)
+
+        total_receipts = sum(r.amount for r in receipts)
+        total_invoices = sum(i.amount for i in invoices)
+        assert total_receipts == total_invoices
+
+    def test_receipts_reference_valid_invoices(self):
+        records = _make_revenue()
+        invoices = generate_invoices(records)
+        receipts = generate_receipts(invoices)
+
+        invoice_ids = {inv.invoice_id for inv in invoices}
+        for rct in receipts:
+            assert rct.invoice_id in invoice_ids, (
+                f"Receipt {rct.receipt_id} references unknown invoice {rct.invoice_id}"
+            )
+
+    def test_no_overpayment(self):
+        """No invoice should receive more in receipts than its amount."""
+        records = _make_revenue()
+        invoices = generate_invoices(records)
+        receipts = generate_receipts(invoices)
+
+        inv_amounts = {inv.invoice_id: inv.amount for inv in invoices}
+        paid: dict[str, Decimal] = {}
+        for rct in receipts:
+            paid[rct.invoice_id] = paid.get(rct.invoice_id, Decimal(0)) + rct.amount
+
+        for inv_id, total_paid in paid.items():
+            assert total_paid <= inv_amounts[inv_id], (
+                f"Invoice {inv_id}: paid {total_paid} > amount {inv_amounts[inv_id]}"
+            )
+
+    def test_receipt_date_reflects_dso(self):
+        """Receipt date should be issue_date + DSO (same month)."""
+        records = _make_revenue()
+        invoices = generate_invoices(records, years=[2025])
+        receipts = generate_receipts(invoices)
+
+        inv_lookup = {inv.invoice_id: inv for inv in invoices}
+        for rct in receipts:
+            inv = inv_lookup[rct.invoice_id]
+            cust = next(c for c in CUSTOMERS if c.id == inv.customer_id)
+            expected = inv.issue_date + datetime.timedelta(days=cust.dso)
+            assert rct.receipt_date.year == expected.year
+            assert rct.receipt_date.month == expected.month
+
+    def test_deterministic(self):
+        records = _make_revenue()
+        invoices = generate_invoices(records)
+        rct1 = generate_receipts(invoices)
+        rct2 = generate_receipts(invoices)
+        assert len(rct1) == len(rct2)
+        for a, b in zip(rct1, rct2):
+            assert a.receipt_id == b.receipt_id
+            assert a.amount == b.amount

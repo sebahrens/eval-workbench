@@ -17,6 +17,18 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from generator.model.ap_ledger import APLedgerResult, generate_ap_ledger
+from generator.model.ar import (
+    AllowanceAnalysis,
+    ARAgingEntry,
+    Invoice,
+    MonthlyCollection,
+    Receipt,
+    generate_allowance,
+    generate_ar_aging,
+    generate_collections,
+    generate_invoices,
+    generate_receipts,
+)
 from generator.model.bank import BankModel, generate_bank_model, post_bank_to_gl
 from generator.model.entities import (
     ENTITIES,
@@ -105,6 +117,12 @@ class CascadeModel:
     leases: list[Lease]
     lease_schedules: list[LeaseScheduleRow]
     tax_provisions: dict[int, TaxProvision]
+    # AR lifecycle (sales-to-cash chain)
+    ar_aging: list[ARAgingEntry] = field(default_factory=list)
+    ar_collections: list[MonthlyCollection] = field(default_factory=list)
+    ar_allowance: list[AllowanceAnalysis] = field(default_factory=list)
+    ar_invoices: list[Invoice] = field(default_factory=list)
+    ar_receipts: list[Receipt] = field(default_factory=list)
     bank: BankModel | None = None
     # Legal diligence (TC-19, TC-21)
     legal_contracts: tuple[LegalContract, ...] = ()
@@ -154,6 +172,22 @@ def build_model(config: Config | None = None, *, seed: int = 42) -> CascadeModel
     # ── Revenue & COGS ──────────────────────────────────────────────
     revenue_records = generate_monthly_revenue(rng, config=config)
     post_revenue_to_gl(ledger, revenue_records)
+
+    # ── AR aging, collections, & allowance ────────────────────────
+    # Pre-compute AR data for the model but do NOT post collections
+    # or allowance to the GL.  The model's GL is accrual-based with
+    # subsidiary cash flows handled centrally through the parent bank
+    # model (TC-02).  Posting collections would credit 1100 (a WC asset)
+    # without a matching WC offset, causing a large NWC distortion.
+    # The lifecycle data (aging, collections, invoices, receipts) is
+    # stored on the model for formatters and validation to consume.
+    ar_aging = generate_ar_aging(revenue_records, year=2025)
+    ar_collections = generate_collections(revenue_records)
+    ar_allowance = generate_allowance(revenue_records)
+
+    # ── AR lifecycle records (invoices → receipts) ─────────────────
+    ar_invoices = generate_invoices(revenue_records)
+    ar_receipts = generate_receipts(ar_invoices, ar_collections)
 
     # ── Intercompany ────────────────────────────────────────────────
     totals: dict[tuple[str, int, int], Decimal] = {}
@@ -227,6 +261,12 @@ def build_model(config: Config | None = None, *, seed: int = 42) -> CascadeModel
         leases=leases,
         lease_schedules=lease_schedules,
         tax_provisions=tax_provisions,
+        # AR lifecycle
+        ar_aging=ar_aging,
+        ar_collections=ar_collections,
+        ar_allowance=ar_allowance,
+        ar_invoices=ar_invoices,
+        ar_receipts=ar_receipts,
         bank=bank_model,
         # Legal diligence — hardcoded canonical tuples (no RNG)
         legal_contracts=LEGAL_CONTRACTS,

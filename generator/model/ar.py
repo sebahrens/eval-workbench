@@ -361,7 +361,13 @@ def post_collections_to_gl(
     ledger: Ledger,
     collections: list[MonthlyCollection],
 ) -> None:
-    """Post cash collection entries: DR 1010 (Cash), CR 1100 (AR Trade)."""
+    """Post collection entries: DR 1015 (Cash — Collections Clearing), CR 1100 (AR Trade).
+
+    Uses account 1015 rather than 1010 (Cash — Operating) because the
+    model's operating cash flows are handled centrally through the parent
+    bank model (TC-02).  Account 1015 represents cash collected from
+    customers but not yet swept into the operating bank account.
+    """
     for coll in collections:
         if coll.amount <= 0:
             continue
@@ -374,10 +380,10 @@ def post_collections_to_gl(
             description=f"AR collections {coll.year}-{coll.month:02d}",
             lines=(
                 JournalEntryLine(
-                    account="1010",
+                    account="1015",
                     debit=coll.amount,
                     credit=Decimal(0),
-                    memo="Cash collected from customers",
+                    memo="Cash collected — clearing",
                 ),
                 JournalEntryLine(
                     account="1100",
@@ -426,6 +432,151 @@ def post_allowance_to_gl(
             ),
         )
         ledger.post(je)
+
+
+# ── Invoice / receipt lifecycle records ──────────────────────────────────────
+# These provide a canonical chain: Invoice → Receipt → Bank deposit
+# so that every AR dollar traces from revenue recognition to cash collection.
+
+
+@dataclass
+class Invoice:
+    """A customer invoice derived from monthly revenue."""
+
+    invoice_id: str  # e.g. "INV-PC-2025-01-001"
+    customer_id: str
+    customer_name: str
+    entity_code: str
+    year: int
+    month: int
+    issue_date: datetime.date
+    due_date: datetime.date
+    amount: Decimal  # whole dollars
+    product_lines: str  # descriptive, e.g. "Industrial Parts, Custom Machining"
+
+
+@dataclass
+class Receipt:
+    """A cash receipt from a customer, referencing the originating invoice."""
+
+    receipt_id: str  # e.g. "RCT-PC-2025-02-001"
+    invoice_id: str
+    customer_id: str
+    customer_name: str
+    entity_code: str
+    receipt_date: datetime.date
+    amount: Decimal  # whole dollars
+    deposit_reference: str  # links to bank deposit category
+
+
+def generate_invoices(
+    revenue_records: list[MonthlyRevenue],
+    years: list[int] | None = None,
+) -> list[Invoice]:
+    """Generate customer-level invoices from monthly revenue.
+
+    Each month × entity produces one invoice per customer (proportional to
+    revenue share), creating the first link in the sales-to-cash chain.
+    """
+    if years is None:
+        years = [2023, 2024, 2025]
+
+    rev_lookup = _entity_monthly_revenue(revenue_records)
+
+    # Build entity → product-line-names mapping for invoice descriptions
+    pl_by_entity: dict[str, list[str]] = {}
+    for rec in revenue_records:
+        pl_by_entity.setdefault(rec.entity_code, [])
+        if rec.product_line not in pl_by_entity[rec.entity_code]:
+            pl_by_entity[rec.entity_code].append(rec.product_line)
+    for ec in sorted(pl_by_entity):
+        pl_by_entity[ec].sort()
+
+    invoices: list[Invoice] = []
+    inv_seq = 0  # Global sequence counter for unique invoice IDs
+    for entity_code in sorted({"PC", "AM", "DS"}):
+        for year in sorted(years):
+            for month in range(1, 13):
+                entity_rev = rev_lookup.get((entity_code, year, month), Decimal(0))
+                if entity_rev == 0:
+                    continue
+
+                entity_custs = [c for c in CUSTOMERS if c.entity_code == entity_code]
+                for cust in entity_custs:
+                    cust_rev = (entity_rev * cust.revenue_share).quantize(
+                        Decimal("1"), rounding=ROUND_HALF_UP
+                    )
+                    if cust_rev <= 0:
+                        continue
+
+                    inv_seq += 1
+
+                    issue_date = datetime.date(year, month, 15)
+                    due_date = issue_date + datetime.timedelta(days=cust.dso)
+
+                    invoices.append(Invoice(
+                        invoice_id=f"INV-{entity_code}-{year}-{month:02d}-{inv_seq:04d}",
+                        customer_id=cust.id,
+                        customer_name=cust.name,
+                        entity_code=entity_code,
+                        year=year,
+                        month=month,
+                        issue_date=issue_date,
+                        due_date=due_date,
+                        amount=cust_rev,
+                        product_lines=", ".join(pl_by_entity.get(entity_code, [])),
+                    ))
+
+    invoices.sort(key=lambda i: (i.year, i.month, i.entity_code, i.customer_id))
+    return invoices
+
+
+def generate_receipts(
+    invoices: list[Invoice],
+    collections: list[MonthlyCollection] | None = None,
+) -> list[Receipt]:
+    """Generate receipt records linking invoices to cash collections.
+
+    Each invoice produces a single receipt when payment is expected based
+    on the customer's DSO.  The receipt date is ``issue_date + DSO``
+    (clamped to month-end on the 25th for GL posting consistency).  This
+    creates a clean Invoice → Receipt → Bank-deposit chain.
+
+    The ``collections`` parameter is accepted for API compatibility but
+    not used; receipts are derived directly from invoice timing.
+    """
+    # Build customer DSO lookup
+    cust_dso: dict[str, int] = {c.id: c.dso for c in CUSTOMERS}
+
+    receipts: list[Receipt] = []
+    receipt_seq: dict[str, int] = {}  # per-entity sequence counter
+
+    for inv in invoices:
+        dso = cust_dso.get(inv.customer_id, 30)
+        expected_payment = inv.issue_date + datetime.timedelta(days=dso)
+
+        # Receipt is posted on the 25th of the payment month
+        pay_year = expected_payment.year
+        pay_month = expected_payment.month
+        receipt_date = datetime.date(pay_year, pay_month, 25)
+
+        seq_key = inv.entity_code
+        seq = receipt_seq.get(seq_key, 0) + 1
+        receipt_seq[seq_key] = seq
+
+        receipts.append(Receipt(
+            receipt_id=f"RCT-{inv.entity_code}-{pay_year}-{pay_month:02d}-{seq:03d}",
+            invoice_id=inv.invoice_id,
+            customer_id=inv.customer_id,
+            customer_name=inv.customer_name,
+            entity_code=inv.entity_code,
+            receipt_date=receipt_date,
+            amount=inv.amount,
+            deposit_reference=f"DEP-{inv.entity_code}-{pay_year}-{pay_month:02d}",
+        ))
+
+    receipts.sort(key=lambda r: (r.receipt_date, r.entity_code, r.receipt_id))
+    return receipts
 
 
 # ── Validation helpers ───────────────────────────────────────────────────────

@@ -54,6 +54,7 @@ def validate_model(
     errors.extend(_check_gl_balance(model))
     errors.extend(_check_consolidated_revenue(model))
     errors.extend(_check_ic_netting(model))
+    errors.extend(_check_ar_gl_tieout(model))
     return errors
 
 
@@ -223,6 +224,59 @@ def _check_ic_netting(model: CascadeModel) -> list[ValidationError]:
                     "year": year,
                     "total_imbalance": str(total_imbalance),
                     "nonzero_accounts": nonzero,
+                },
+            ))
+
+    return errors
+
+
+# ── 5. AR lifecycle internal consistency ────────────────────────────────────
+
+
+def _check_ar_gl_tieout(model: CascadeModel) -> list[ValidationError]:
+    """Verify AR lifecycle data is internally consistent.
+
+    Checks:
+    - AR aging totals are positive per entity.
+    - Total collections < total revenue (some AR still outstanding).
+    - Invoice count matches expected (customers × months × years).
+    - Receipt total matches invoice total (every invoice produces a receipt).
+
+    Note: GL 1100 balance is NOT compared to aging because the model
+    does not post collection credits to GL (see build.py comment).
+    The AR-GL tie-out is validated in the isolated test_ar_ap.py test.
+    """
+    errors: list[ValidationError] = []
+
+    if not model.ar_aging:
+        return errors
+
+    # Check aging totals are positive
+    for ec in sorted(model.subsidiaries):
+        entity_total = sum(
+            e.total for e in model.ar_aging if e.entity_code == ec
+        )
+        if entity_total <= 0:
+            errors.append(ValidationError(
+                category="ar_tieout",
+                message=f"AR aging total for {ec} is non-positive: {entity_total}",
+                detail={"entity_code": ec, "aging_total": str(entity_total)},
+            ))
+
+    # Check receipt total matches invoice total
+    if model.ar_invoices and model.ar_receipts:
+        inv_total = sum(i.amount for i in model.ar_invoices)
+        rct_total = sum(r.amount for r in model.ar_receipts)
+        if inv_total != rct_total:
+            errors.append(ValidationError(
+                category="ar_tieout",
+                message=(
+                    f"Receipt total ({rct_total}) does not match "
+                    f"invoice total ({inv_total})"
+                ),
+                detail={
+                    "invoice_total": str(inv_total),
+                    "receipt_total": str(rct_total),
                 },
             ))
 

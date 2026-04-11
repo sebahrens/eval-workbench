@@ -99,6 +99,7 @@ def _acct(number: str, name: str, description: str, *, credit: bool = False) -> 
 # ── 1xxx  Assets ──────────────────────────────────────────────────────────────
 _ASSETS = [
     _acct("1010", "Cash — Operating", "Primary operating bank accounts"),
+    _acct("1015", "Cash — Collections Clearing", "Customer collections pending sweep to operating account"),
     _acct("1020", "Cash — Payroll", "Dedicated payroll bank account"),
     _acct("1030", "Cash — Restricted", "Restricted cash (bond covenants)"),
     _acct("1050", "Short-Term Investments", "Money market and short-term securities"),
