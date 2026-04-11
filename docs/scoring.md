@@ -63,6 +63,41 @@ The auto-grader evaluates:
 
 Output: one JSON report per test case + an aggregate summary.
 
+#### Normal grading vs self-test: evidence semantics
+
+The auto-grader has two distinct modes that answer different questions, and they look for evidence in different places. Confusing the two leads to false passes.
+
+**Normal grading** (`--agent-output`) answers: *Did the agent produce correct results from the test inputs?*
+
+Every check searches **only the agent's output directory** for evidence:
+
+| Check | What it searches | What it proves |
+|---|---|---|
+| Canary verification | Agent output files | The agent actually read the correct input files (not other files or cached data) |
+| Error detection | Agent output files | The agent flagged planted errors in its response |
+| Evidence (TC-19+) | Agent output files | The agent cited required sources and used calibrated terms |
+| Correctness | Agent output JSON/xlsx | The agent's computed values match gold within tolerance |
+
+If the agent produces no structured output (no JSON, no extractable data), correctness scores **1** with a clear "no agent data" message. The grader does not fall back to gold standard data — that would compare the gold standard to itself and always pass.
+
+Similarly, if a canary appears only in the generated input files but not in the agent's output, the canary check **fails**. The agent must demonstrate it read the file by referencing the canary in its response.
+
+**Self-test** (`--self-test`) answers: *Is the benchmark itself well-formed?*
+
+Self-test validates the generated suite, not an agent. Each check searches **the generated input files and gold standards** instead of agent output:
+
+| Check | What it searches | What it validates |
+|---|---|---|
+| Canary verification | Test case `input_files/` | Canary codes are actually embedded in the generated files |
+| Error detection | Gold standard descriptions | Each planted error has a well-formed description (>5 chars) |
+| Evidence (TC-19+) | Gold standard evidence specs | Each finding has non-empty `required_sources` and `acceptable_terms` |
+| Correctness | Gold standard data | The gold defines non-empty expected values |
+| Completeness | Gold standard structure | The gold defines `required_sheets`, `file_type`, and sections |
+
+Self-test uses `SelfTestGrader`, a subclass that overrides the base `TestCaseGrader` methods. The base class never falls back to input files or gold data — that behavior is isolated in the subclass.
+
+This separation is load-bearing. Before the fix (see `synth-data-bpt.1`, `synth-data-bpt.2`), the base grader could over-credit canaries by finding them in input files and over-credit correctness by falling back to gold data. Both paths now enforce strict boundaries.
+
 ### 2. Human rater (qualitative dimensions)
 
 Two human raters independently score each TC on all 5 dimensions using `scoring/scoring_template.xlsx`. The template has four sheets:
@@ -203,7 +238,7 @@ For each test run, capture:
 
 ## Scoring the suite against the suite
 
-`auto_grader --self-test` grades the **gold standards against themselves**. Because the gold standards are derived from the same canonical model as the inputs, this should always produce `3/3/3/3/3 PASS` for every test case. When it doesn't, there's a shape mismatch somewhere in the pipeline:
+`auto_grader --self-test` grades the **generated benchmark against itself** using `SelfTestGrader` (see [evidence semantics](#normal-grading-vs-self-test-evidence-semantics) above for how it differs from normal grading). Because the gold standards are derived from the same canonical model as the inputs, this should always produce `3/3/3/3/3 PASS` for every test case. When it doesn't, there's a shape mismatch somewhere in the pipeline:
 
 | Symptom | Likely cause |
 |---|---|
