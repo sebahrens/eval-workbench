@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from generator.model.build import CascadeModel, build_model
+from generator.model.entities import ENTITIES, SUBSIDIARIES
 from generator.model.hr_diligence import (
     CONTRACTOR_CLASSIFICATION_SIGNALS,
     DILIGENCE_REQUESTS,
@@ -109,6 +110,8 @@ class TestDefaultsAreEmptyTuples:
         from generator.model.gl import Ledger
 
         m = CascadeModel(
+            entities=ENTITIES,
+            subsidiaries=SUBSIDIARIES,
             ledger=Ledger(),
             revenue_records=[],
             employees=[],
@@ -127,6 +130,8 @@ class TestDefaultsAreEmptyTuples:
         from generator.model.gl import Ledger
 
         m = CascadeModel(
+            entities=ENTITIES,
+            subsidiaries=SUBSIDIARIES,
             ledger=Ledger(),
             revenue_records=[],
             employees=[],

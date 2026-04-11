@@ -8,6 +8,11 @@ from pathlib import Path
 import pytest
 
 from generator.config import Config, ConfigError, load_config
+from generator.model.entities import (
+    ENTITIES,
+    SUBSIDIARIES,
+    entities_from_config,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -166,3 +171,68 @@ def test_bad_seasonal_weights_raises(minimal_yaml: Path) -> None:
     minimal_yaml.write_text(text)
     with pytest.raises(ConfigError, match="Seasonal weights must sum to 1.0"):
         load_config(minimal_yaml)
+
+
+# ---------------------------------------------------------------------------
+# entities_from_config adapter tests
+# ---------------------------------------------------------------------------
+
+def test_default_config_matches_hardcoded_entities(default_config: Config) -> None:
+    """Default Cascade config must produce the same entities as the module constants."""
+    all_ents, subs = entities_from_config(default_config.company)
+
+    # Same entity codes
+    assert set(all_ents) == set(ENTITIES)
+    assert set(subs) == set(SUBSIDIARIES)
+
+    # Each hardcoded entity matches its config-derived counterpart
+    for code, expected in ENTITIES.items():
+        derived = all_ents[code]
+        assert derived.code == expected.code
+        assert derived.name == expected.name
+        assert derived.location == expected.location
+        assert derived.state == expected.state
+        assert derived.revenue_target == expected.revenue_target
+        assert derived.gross_margin == expected.gross_margin
+        assert derived.is_parent == expected.is_parent
+
+
+def test_custom_config_produces_custom_entities(minimal_yaml: Path) -> None:
+    """A minimal custom config produces entities with the right codes/names."""
+    cfg = load_config(minimal_yaml)
+    all_ents, subs = entities_from_config(cfg.company)
+
+    # One subsidiary (SA) plus auto-derived parent
+    assert len(subs) == 1
+    assert "SA" in subs
+    assert subs["SA"].name == "Sub A LLC"
+    assert subs["SA"].revenue_target == 100_000_000
+    assert subs["SA"].gross_margin == 0.35
+
+    # Parent exists
+    parent_codes = [c for c, e in all_ents.items() if e.is_parent]
+    assert len(parent_codes) == 1
+    parent = all_ents[parent_codes[0]]
+    assert parent.name == "TestCo"
+    assert parent.revenue_target == 100_000_000
+    assert parent.is_parent is True
+
+
+def test_build_model_uses_config_entities(default_config: Config) -> None:
+    """build_model with config populates model.entities and model.subsidiaries."""
+    from generator.model.build import build_model
+
+    model = build_model(default_config)
+    assert set(model.entities) == set(ENTITIES)
+    assert set(model.subsidiaries) == set(SUBSIDIARIES)
+    assert model.entities["CI"].is_parent is True
+    assert "CI" not in model.subsidiaries
+
+
+def test_build_model_without_config_uses_hardcoded() -> None:
+    """build_model(seed=42) falls back to hardcoded entity constants."""
+    from generator.model.build import build_model
+
+    model = build_model(seed=42)
+    assert model.entities is ENTITIES
+    assert model.subsidiaries is SUBSIDIARIES

@@ -17,6 +17,12 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from generator.model.bank import BankModel, generate_bank_model, post_bank_to_gl
+from generator.model.entities import (
+    ENTITIES,
+    SUBSIDIARIES,
+    Entity,
+    entities_from_config,
+)
 
 if TYPE_CHECKING:
     from generator.config import Config
@@ -80,6 +86,8 @@ class CascadeModel:
     single source of truth.
     """
 
+    entities: dict[str, Entity]
+    subsidiaries: dict[str, Entity]
     ledger: Ledger
     revenue_records: list[MonthlyRevenue]
     employees: list[Employee]
@@ -119,6 +127,13 @@ def build_model(config: Config | None = None, *, seed: int = 42) -> CascadeModel
     """
     effective_seed = config.seed if config is not None else seed
     rng = random.Random(effective_seed)
+
+    # Derive entity maps from config (or fall back to hardcoded constants)
+    if config is not None:
+        all_entities, sub_entities = entities_from_config(config.company)
+    else:
+        all_entities, sub_entities = ENTITIES, SUBSIDIARIES
+
     ledger = Ledger()
 
     # ── Revenue & COGS ──────────────────────────────────────────────
@@ -176,6 +191,8 @@ def build_model(config: Config | None = None, *, seed: int = 42) -> CascadeModel
     post_tax_provision_to_gl(ledger, tax_provisions)
 
     return CascadeModel(
+        entities=all_entities,
+        subsidiaries=sub_entities,
         ledger=ledger,
         revenue_records=revenue_records,
         employees=employees,
