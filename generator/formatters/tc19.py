@@ -413,6 +413,77 @@ def _tc19_gold(
                 ],
             },
         },
+        judgment_traps=[
+            {
+                "trap_id": "JT-TC19-001",
+                "trap_type": "missing_evidence",
+                "expected_response": "flag",
+                "description": (
+                    "Acme Manufacturing (LCTR-001) has a change-of-control "
+                    "termination clause (CLS-001, Section 14.2). Agent must "
+                    "flag that no waiver or consent has been obtained and "
+                    "that consent/novation is required pre-close. Revenue "
+                    "at risk is approximately $36M/year (~18% consolidated)."
+                ),
+            },
+            {
+                "trap_id": "JT-TC19-002",
+                "trap_type": "summary_contradiction",
+                "expected_response": "flag",
+                "description": (
+                    "Management summary describes TechAlloy (LCTR-003) MFN "
+                    "clause as triggering on 'any pricing difference,' but "
+                    "AMD-002 raised the threshold to differences exceeding "
+                    "5% per kg. Agent must cite AMD-002 as the controlling "
+                    "source and flag the summary as contradicted."
+                ),
+            },
+            {
+                "trap_id": "JT-TC19-003",
+                "trap_type": "summary_contradiction",
+                "expected_response": "flag",
+                "description": (
+                    "AMD-003 expanded NextGen Composites (LCTR-004) "
+                    "exclusivity to thermal barrier coatings (not just alloy "
+                    "specs). The management summary does not mention AMD-003. "
+                    "Agent must flag the summary as stale regarding "
+                    "exclusivity scope."
+                ),
+            },
+            {
+                "trap_id": "JT-TC19-004",
+                "trap_type": "missing_evidence",
+                "expected_response": "flag",
+                "description": (
+                    "NextGen government subcontract (LCTR-004) requires "
+                    "prior written consent for assignment (Section 22.1). "
+                    "Change of ownership may trigger FAR 42.12 novation. "
+                    "Agent must flag this as requiring consent pre-close."
+                ),
+            },
+            {
+                "trap_id": "JT-TC19-005",
+                "trap_type": "overconfident_conclusion",
+                "expected_response": "caveat",
+                "description": (
+                    "ChemSource (LCTR-010) IP license survives termination "
+                    "for 36 months. This is a strategic dependency, not a "
+                    "defect. Agent should flag it with appropriate caveats "
+                    "rather than treating it as a simple risk item."
+                ),
+            },
+            {
+                "trap_id": "JT-TC19-006",
+                "trap_type": "missing_evidence",
+                "expected_response": "flag",
+                "description": (
+                    "Every high-risk finding must reference the primary "
+                    "contract or amendment, not just the management summary. "
+                    "Findings that rely solely on the summary should be "
+                    "flagged as potentially unreliable."
+                ),
+            },
+        ],
         source_requirements={
             "minimum_sources_per_finding": 1,
             "primary_source_required_for_high_risk": True,
