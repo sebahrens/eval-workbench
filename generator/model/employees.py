@@ -5,11 +5,15 @@ employee_id, name, entity, department, title, hire_date, annual_salary,
 state, cost_center, is_r&d_eligible, termination_date.
 
 Key constraints:
-- 850 total employees across CI, PC, AM, DS.
+- 850 total employees across CI, PC, AM, DS (default).
 - R&D eligibility only for Advanced Materials (AM) R&D and Engineering staff.
 - ~8% annual turnover → ~68 terminated employees.
 - Hire dates distributed across 3 years (2022-01-01 to 2024-12-31).
 - Deterministic via seeded random + Faker.
+
+When a :class:`~generator.config.Config` is provided, headcounts, turnover
+rate, remote states, and entity codes are derived from it.  Without config,
+hardcoded Cascade defaults are used (backward compatible).
 """
 
 from __future__ import annotations
@@ -17,10 +21,14 @@ from __future__ import annotations
 import datetime
 import random
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from faker import Faker
 
-from generator.model.entities import ENTITIES
+from generator.model.entities import ENTITIES, entities_from_config
+
+if TYPE_CHECKING:
+    from generator.config import Config
 
 # ── Department / title / salary configuration ─────────────────────────────────
 
@@ -175,27 +183,51 @@ class Employee:
     termination_date: datetime.date | None
 
 
-def generate_employees(rng: random.Random) -> list[Employee]:
-    """Generate the full 850-employee roster deterministically.
+def generate_employees(
+    rng: random.Random,
+    config: Config | None = None,
+) -> list[Employee]:
+    """Generate the full employee roster deterministically.
 
-    Args:
-        rng: A seeded random.Random instance for determinism.
+    Parameters
+    ----------
+    rng : random.Random
+        Seeded PRNG for determinism.
+    config : Config, optional
+        When provided, headcounts come from subsidiary ``employee_count``
+        fields, turnover rate from ``config.company.employees``, and
+        remote states from the same section.  Without config the
+        hardcoded Cascade defaults (850 employees) are used.
 
-    Returns:
-        Sorted list of Employee dataclasses (sorted by employee_id).
+    Returns
+    -------
+    list[Employee]
+        Sorted by employee_id.
     """
     fake = Faker()
     Faker.seed(rng.randint(0, 2**31))  # Derive Faker seed from our RNG
 
-    assert sum(_ENTITY_HEADCOUNTS.values()) == 850
+    # ── Resolve parameters from config or hardcoded defaults ────────
+    if config is not None:
+        all_entities, _ = entities_from_config(config.company)
+        entity_headcounts = _headcounts_from_config(config)
+        turnover_rate = config.company.employees.annual_turnover_rate
+        remote_states = list(config.company.employees.remote_states)
+    else:
+        all_entities = ENTITIES
+        entity_headcounts = dict(_ENTITY_HEADCOUNTS)
+        turnover_rate = 0.08
+        remote_states = list(_REMOTE_STATES)
 
     employees: list[Employee] = []
 
     # Process entities in sorted order for determinism.
-    for entity_code in sorted(_ENTITY_HEADCOUNTS.keys()):
-        entity = ENTITIES[entity_code]
-        headcount = _ENTITY_HEADCOUNTS[entity_code]
-        dept_weights = _ENTITY_DEPT_WEIGHTS[entity_code]
+    for entity_code in sorted(entity_headcounts.keys()):
+        entity = all_entities[entity_code]
+        headcount = entity_headcounts[entity_code]
+        dept_weights = _ENTITY_DEPT_WEIGHTS.get(entity_code)
+        if dept_weights is None or headcount == 0:
+            continue
 
         # Distribute headcount across departments proportionally.
         dept_counts = _distribute_headcount(headcount, dept_weights, rng)
@@ -216,7 +248,7 @@ def generate_employees(rng: random.Random) -> list[Employee]:
                 # State: default is entity's state, some remote.
                 state = entity.state
                 if not entity.is_parent and rng.random() < _REMOTE_PROBABILITY:
-                    state = rng.choice(_REMOTE_STATES)
+                    state = rng.choice(remote_states)
 
                 # Salary: base range × location multiplier, rounded to nearest $1000.
                 multiplier = _LOCATION_MULTIPLIER.get(state, 1.0)
@@ -227,7 +259,7 @@ def generate_employees(rng: random.Random) -> list[Employee]:
                 hire_date = _random_hire_date(rng)
 
                 # Termination: ~8% annual turnover.
-                termination_date = _maybe_terminate(rng, hire_date)
+                termination_date = _maybe_terminate(rng, hire_date, turnover_rate)
 
                 # R&D eligibility: only AM R&D and Engineering staff.
                 is_rd_eligible = (
@@ -236,7 +268,7 @@ def generate_employees(rng: random.Random) -> list[Employee]:
                 )
 
                 # Cost center: entity base + department offset.
-                cc_base = _COST_CENTER_BASE[entity_code]
+                cc_base = _COST_CENTER_BASE.get(entity_code, 5000)
                 cc_offset = _DEPT_CC_OFFSET[dept_name]
                 cost_center = str(cc_base + cc_offset)
 
@@ -263,6 +295,34 @@ def generate_employees(rng: random.Random) -> list[Employee]:
     # Sort by employee_id for deterministic output order.
     employees.sort(key=lambda e: e.employee_id)
     return employees
+
+
+def _headcounts_from_config(config: Config) -> dict[str, int]:
+    """Derive per-entity headcounts from config.
+
+    Subsidiary headcounts come from each subsidiary's ``employee_count``.
+    Parent headcount is ``total_count - sum(subsidiary counts)``.
+    """
+    from generator.config import CompanyConfig
+
+    company: CompanyConfig = config.company
+    total = company.employees.total_count
+
+    # Build parent entity code (same logic as entities_from_config)
+    words = company.name.replace(",", "").replace(".", "").split()
+    parent_code = "".join(w[0] for w in words if w[0].isupper())[:2]
+
+    headcounts: dict[str, int] = {}
+    sub_total = 0
+    for _key, sub in sorted(company.subsidiaries.items()):
+        headcounts[sub.entity_code] = sub.employee_count
+        sub_total += sub.employee_count
+
+    parent_headcount = total - sub_total
+    if parent_headcount > 0:
+        headcounts[parent_code] = parent_headcount
+
+    return headcounts
 
 
 def _distribute_headcount(
@@ -312,11 +372,12 @@ def _random_hire_date(rng: random.Random) -> datetime.date:
 def _maybe_terminate(
     rng: random.Random,
     hire_date: datetime.date,
+    turnover_rate: float = 0.08,
 ) -> datetime.date | None:
     """Decide if an employee is terminated, and if so, when.
 
-    ~8% annual turnover. Termination date is after hire_date and before
-    2025-12-31. Returns None for active employees.
+    Termination date is after hire_date and before 2025-12-31.
+    Returns None for active employees.
     """
     # Calculate tenure in years to determine termination probability.
     reference = datetime.date(2025, 12, 31)
@@ -325,7 +386,7 @@ def _maybe_terminate(
 
     # Probability of having been terminated at some point during tenure.
     # Using 1 - (1 - rate)^years for compound probability.
-    prob_terminated = 1.0 - (1.0 - 0.08) ** tenure_years
+    prob_terminated = 1.0 - (1.0 - turnover_rate) ** tenure_years
 
     if rng.random() >= prob_terminated:
         return None

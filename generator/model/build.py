@@ -151,7 +151,7 @@ def build_model(config: Config | None = None, *, seed: int = 42) -> CascadeModel
     post_ic_transactions_to_gl(ledger, ic_txns)
 
     # ── Employees ───────────────────────────────────────────────────
-    employees = generate_employees(rng)
+    employees = generate_employees(rng, config=config)
 
     # ── Operating expenses ──────────────────────────────────────────
     rev_by_entity_year: dict[tuple[str, int], Decimal] = {}

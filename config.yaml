@@ -26,7 +26,7 @@ company:
       revenue: 95_000_000
       type: "Core manufacturing (industrial parts)"
       gross_margin: 0.35
-      employee_count: 350
+      employee_count: 330
 
     advanced_materials:
       legal_name: "Cascade Advanced Materials, Inc."
@@ -37,7 +37,7 @@ company:
       type: "Specialty materials R&D and manufacturing"
       gross_margin: 0.52
       rd_spend_pct: 0.12
-      employee_count: 280
+      employee_count: 270
 
     distribution_services:
       legal_name: "Cascade Distribution Services LLC"
@@ -47,7 +47,7 @@ company:
       revenue: 40_000_000
       type: "Warehousing and logistics"
       gross_margin: 0.18
-      employee_count: 220
+      employee_count: 210
 
   # Growth rates (§2.4 rule 6)
   growth_rates:
