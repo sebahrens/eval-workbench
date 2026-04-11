@@ -1,6 +1,6 @@
 # Adding a Test Case
 
-This is a how-to for extending the suite with a new test case (TC-19 and beyond). It assumes you've read [`architecture.md`](./architecture.md) and understand the three-phase design.
+This is a how-to for extending the suite with a new test case (TC-22 and beyond). It assumes you've read [`architecture.md`](./architecture.md) and understand the three-phase design and the scenario pack system.
 
 ## When to add a test case
 
@@ -84,7 +84,7 @@ Rules:
 - **Always embed the canary.**
 - **Plant errors through the registry**, not inline. This guarantees the error is recorded and verifiable.
 
-Register the formatter in `generator/formatters/__init__.py` and wire it into `generate_test_suite.py`.
+Register the formatter in the appropriate pack module under `generator/packs/`. Add the emitter function to the pack's `emitters` list, the test case ID to `test_cases`, and any new canary file keys to `canary_file_keys`. The orchestrator discovers test cases through packs, not `generate_test_suite.py` directly.
 
 ### 4. Write the gold standard emitter
 
@@ -234,6 +234,18 @@ Causes:
 - The formatter applied the error before embedding the canary, and canary embedding re-wrote the file and clobbered the planted error
 
 Apply errors after all other formatter operations, and unit-test the transformation function in isolation before using it in a formatter.
+
+## Decide: new test case or new pack?
+
+Add a **new test case** to an existing pack when the capability fits the pack's domain and the canonical model already has the data.
+
+Add a **new scenario pack** when you need a distinct professional-services domain with its own canonical model modules, file keys, and opt-in lifecycle. See [`specs/universal-professional-services-scenario-packs.md`](../specs/universal-professional-services-scenario-packs.md) for the pack contract.
+
+## File format policy
+
+V1 packs may generate files in: `.xlsx`, `.docx`, `.pdf`, `.csv`, `.md`, `.txt`.
+
+Do **not** introduce `.eml`, `.msg`, `.html`, or `.pptx` without first adding canary extraction, file-open, and grader support for that format.
 
 ## Keep the spec in sync
 

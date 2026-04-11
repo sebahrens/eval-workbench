@@ -78,11 +78,39 @@ The rubric for each TC is auto-generated from `scoring/rubrics.yaml`, which decl
 
 Reconciliation: when two raters disagree by more than 1 point on any dimension, they discuss and produce a consensus score.
 
+## Evidence expectations (legal/HR diligence pack)
+
+Gold standards for TC-19 through TC-21 may include an `evidence_expectations` field. This declares which primary-source documents and key terms the agent must cite when arriving at a finding. Evidence expectations support scoring for professional-services reasoning that goes beyond numerical accuracy — the agent must demonstrate it relied on the correct sources and used calibrated language.
+
+Example from a TC-19 gold standard:
+
+```json
+{
+  "evidence_expectations": {
+    "risk_change_of_control": {
+      "required_sources": ["tc19_contract_acme", "tc19_acme_amendment_2025"],
+      "primary_source_required": true,
+      "acceptable_terms": ["change of control", "assignment", "counterparty consent"]
+    }
+  }
+}
+```
+
+Evidence expectations are optional and backward-compatible. Older gold standards without this field are scored normally. When present, the auto-grader checks that agent outputs reference the required sources and contain acceptable terms.
+
+## Judgment traps (legal/HR diligence pack)
+
+Judgment traps are professional-judgment challenges distinct from planted numerical errors. They test whether the agent can identify contradictions, missing evidence, scope boundaries, and overconfident conclusions.
+
+Each trap is recorded in a judgment trap registry with a `JDG-NNN` ID. Unlike `ERR-NNN` planted errors (which have a definitive right answer), judgment traps have expected responses like `flag`, `caveat`, `deprioritize`, or `do_not_assert` — reflecting the calibrated language expected of a professional advisor.
+
+See [`specs/universal-professional-services-scenario-packs.md`](../specs/universal-professional-services-scenario-packs.md) for the full judgment trap schema.
+
 ## The capability matrix
 
 Spec §7.5 defines a 3D matrix for tracking results:
 
-- **Axis 1 — Service Line:** Audit, Tax, Advisory, Cross-Service
+- **Axis 1 — Service Line:** Audit, Tax, Advisory, Legal, HR Diligence, Cross-Service
 - **Axis 2 — Capability:** File Reading, File Writing, Data Analysis (SQL/DataFrame), RAG, Multi-Step Workflow
 - **Axis 3 — Difficulty:** Routine, Complex, Adversarial
 
@@ -92,9 +120,9 @@ Each test case maps to one or more cells in this matrix. The aggregate dashboard
 
 The generator is deterministic, so the same seed produces the same inputs every time. This makes regression testing cheap:
 
-1. **Run the agent** on all 18 test cases.
+1. **Run the agent** on all test cases for the selected packs.
 2. **Record** the scores in the scoring template.
-3. **After an improvement cycle** (model change, prompt change, tool change), rerun all 18 tests.
+3. **After an improvement cycle** (model change, prompt change, tool change), rerun all tests.
 4. **Compare** score tuples to the prior run.
 5. **Flag regressions** — any dimension that scored worse than before.
 6. **Track trends** over time.

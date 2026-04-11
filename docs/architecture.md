@@ -4,7 +4,7 @@ The synth-data generator is a **three-phase deterministic pipeline** that turns 
 
 ## The problem this architecture solves
 
-The suite covers 18 test cases across Audit, Tax, and Advisory service lines, and the cases are deliberately cross-referential: TC-01's trial balance must tie to TC-06's tax provision pre-tax book income, which must tie to TC-11's QofE EBITDA, which must tie to TC-15's DCF base. If these numbers ever drift, the suite is useless — an agent that correctly reconciles TC-01 would look like it's hallucinating when TC-06 disagrees.
+The suite covers 21 test cases across Audit, Tax, Advisory, and Legal/HR Diligence service lines, and the cases are deliberately cross-referential: TC-01's trial balance must tie to TC-06's tax provision pre-tax book income, which must tie to TC-11's QofE EBITDA, which must tie to TC-15's DCF base. If these numbers ever drift, the suite is useless — an agent that correctly reconciles TC-01 would look like it's hallucinating when TC-06 disagrees.
 
 Two naive approaches fail:
 
@@ -38,6 +38,8 @@ Key modules:
 | `customers.py` | Top customers, contracts, key people, pending litigation |
 | `consolidation.py` | Eliminations, consolidated financials |
 | `views.py` | Pure functions producing trial balance, balance sheet, income statement, cash flow, monthly P&L |
+| `legal.py` | Legal contracts, clauses, amendments, diligence issues (M&A legal diligence pack) |
+| `hr_diligence.py` | Employment agreements, retention awards, severance, contractor signals (HR diligence pack) |
 
 Rules the model obeys:
 
@@ -113,17 +115,33 @@ Because errors are transformations, they are unit-testable: apply the error, un-
 
 `canary_registry.json` maps `file → canary → location`. The auto-grader uses this to verify the agent under test actually read the correct files — if an agent's TC-01 output contains the canary from `cascade_tb_fy2025.xlsx` but not the canary from `cascade_financials_fy2024_signed.pdf`, you know it skipped the PDF.
 
+## Scenario packs
+
+Test cases are organized into **scenario packs** — self-contained bundles registered in `generator/packs/`. Each pack declares its test case IDs, canary file keys, ordered emitters, and dependencies on other packs.
+
+| Pack | Module | Test Cases | Depends On |
+|---|---|---|---|
+| `cascade_accounting_core` | `generator/packs/accounting_core.py` | TC-01 – TC-18 | — |
+| `cascade_legal_hr_diligence` | `generator/packs/legal_hr_diligence.py` | TC-19 – TC-21 | `cascade_accounting_core` |
+
+Packs are statically registered at import time. The orchestrator resolves selected packs, validates dependencies, and runs emitters in topological order.
+
+Default generation runs `cascade_accounting_core` only. Packs beyond the default must be explicitly selected via the `pack_ids` parameter to `generate()`.
+
+For the full pack contract and extension rules, see [`specs/universal-professional-services-scenario-packs.md`](../specs/universal-professional-services-scenario-packs.md).
+
 ## The orchestrator
 
 `generate_test_suite.py` is the top-level entry point. It:
 
 1. Parses `config.yaml` (seed, output dir, growth rates, margins, canary and error assignments)
 2. Seeds all RNGs
-3. Builds the canonical model (Phase 1)
-4. Invokes each TC formatter (Phase 2) with the model, registering every emitted file in the manifest
-5. Runs the gold standard emitters (Phase 3)
-6. Writes `manifest.json`, `canary_registry.json`, `error_registry.json`
-7. Exits
+3. Resolves selected scenario packs (validates dependencies, topological sort)
+4. Builds the canonical model (Phase 1)
+5. Invokes each pack's emitters (Phase 2) with the model, registering every emitted file in the manifest
+6. Runs the gold standard emitters for active test cases (Phase 3)
+7. Writes `manifest.json`, `canary_registry.json`, `error_registry.json`
+8. Exits
 
 The full pipeline runs in a few minutes and produces byte-identical output on every invocation.
 

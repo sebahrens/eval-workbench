@@ -1,6 +1,6 @@
 # Cascade Industries Test Suite
 
-A deterministic test suite for evaluating AI agents on Big 4 professional services workloads (Audit, Tax, Advisory). The suite generates 18 test cases built around a single fictional company — Cascade Industries, Inc. — ensuring cross-referential integrity across all service lines.
+A deterministic test suite for evaluating AI agents on Big 4 professional services workloads (Audit, Tax, Advisory, Legal/HR Diligence). The suite is organized into **scenario packs** — self-contained bundles of test cases, formatters, and gold standards that share a single canonical model. The default accounting-core pack generates 18 test cases; the legal/HR diligence pack adds 3 more (TC-19 through TC-21). All cases are built around a single fictional company — Cascade Industries, Inc. — ensuring cross-referential integrity across all service lines and packs.
 
 ## Documentation
 
@@ -10,10 +10,12 @@ A deterministic test suite for evaluating AI agents on Big 4 professional servic
 | [`docs/canonical-model.md`](./docs/canonical-model.md) | Reference for the Cascade Industries data model |
 | [`docs/canaries-and-errors.md`](./docs/canaries-and-errors.md) | How provenance canaries and planted errors work |
 | [`docs/scoring.md`](./docs/scoring.md) | Grading methodology, rubric, and test execution protocol |
-| [`docs/adding-a-test-case.md`](./docs/adding-a-test-case.md) | How to extend the suite with TC-19+ |
+| [`docs/adding-a-test-case.md`](./docs/adding-a-test-case.md) | How to extend the suite with new test cases |
 | [`docs/troubleshooting.md`](./docs/troubleshooting.md) | Common failure modes and fixes |
 | [`docs/glossary.md`](./docs/glossary.md) | Big 4 terminology for engineers |
 | [`prompt.md`](./prompt.md) | Authoritative specification (the original design doc) |
+| [`SPEC.md`](./SPEC.md) | Index of durable project specifications |
+| [`specs/universal-professional-services-scenario-packs.md`](./specs/universal-professional-services-scenario-packs.md) | Scenario-pack architecture and M&A legal/HR diligence spec |
 
 ## Prerequisites
 
@@ -29,9 +31,24 @@ uv sync --all-extras
 
 ## Generate the Test Suite
 
+Generate the default accounting-core pack (TC-01 through TC-18):
+
 ```bash
 uv run python generate_test_suite.py --output /tmp/test_suite
 ```
+
+To include additional scenario packs, pass their pack IDs programmatically through the `generate()` function:
+
+```python
+from generator.config import load_config
+from generate_test_suite import generate
+
+config = load_config("config.yaml")
+generate(config, Path("/tmp/test_suite"), pack_ids=["cascade_accounting_core", "cascade_legal_hr_diligence"])
+# Or use pack_ids=["all"] to enable every registered pack.
+```
+
+> **Note:** A `--packs` CLI flag is planned but not yet implemented. For now, use the Python API to select packs beyond the default.
 
 This produces the full suite under `/tmp/test_suite/`:
 
@@ -41,13 +58,40 @@ test_suite/
 ├── canary_registry.json     # 8-char canary per file (for provenance checks)
 ├── error_registry.json      # 25 planted errors across test cases
 ├── shared_data/             # Cross-test reference files (COA, roster, financials, …)
-├── test_cases/TC-01..TC-18/ # Per-test prompt, input files, expected behavior
+├── test_cases/TC-01..TC-21/ # Per-test prompt, input files, expected behavior
 ├── gold_standards/          # Expected outputs (JSON + reference files)
 ├── scoring/                 # Rubrics, auto-grader, scoring template
 └── templates/               # Word/cover templates
 ```
 
 The generator is seeded (`SEED=42`) and produces byte-identical output on every run.
+
+## Scenario Packs
+
+The suite is organized into scenario packs — self-contained bundles of test cases, formatters, canary keys, and gold standard emitters. Packs are statically registered in `generator/packs/`.
+
+| Pack ID | Display Name | Test Cases | Dependencies |
+|---|---|---|---|
+| `cascade_accounting_core` | Cascade Accounting Core | TC-01 through TC-18 | — |
+| `cascade_legal_hr_diligence` | Cascade Legal/HR Diligence | TC-19 through TC-21 | `cascade_accounting_core` |
+
+**Default generation** runs only `cascade_accounting_core`. Legal/HR diligence must be explicitly selected.
+
+Pack dependencies are validated and topologically sorted at generation time. Selecting a pack without its dependencies raises a `ConfigError`.
+
+For the full scenario-pack contract, see [`specs/universal-professional-services-scenario-packs.md`](./specs/universal-professional-services-scenario-packs.md).
+
+### Adding a new pack vs a new test case
+
+Add a **new test case** within an existing pack when the capability you want to test fits the pack's domain and its input files come from canonical model data the pack already owns.
+
+Add a **new pack** when you need:
+
+- A distinct professional-services domain (e.g., restructuring, compliance, ESG)
+- New canonical model modules (dataclasses, generators) that other packs don't need
+- Separate default/opt-in lifecycle — packs can be enabled independently
+
+See [`docs/adding-a-test-case.md`](./docs/adding-a-test-case.md) for the step-by-step checklist.
 
 ## Test Cases
 
@@ -71,6 +115,22 @@ The generator is seeded (`SEED=42`) and produces byte-identical output on every 
 | TC-16 | Cross-service | Routine | Engagement letter generation |
 | TC-17 | Cross-service | Complex | Multi-file deliverable assembly |
 | TC-18 | Cross-service | Adversarial | Prior year workpaper rollforward |
+
+### Legal/HR Diligence Pack (`cascade_legal_hr_diligence`)
+
+| ID | Service Line | Difficulty | Description |
+|----|-------------|------------|-------------|
+| TC-19 | Legal | Complex | Contract risk matrix (change-of-control, MFN, exclusivity) |
+| TC-20 | HR Diligence | Complex | HR diligence exposure summary (severance, retention, classification) |
+| TC-21 | Cross-service | Adversarial | Combined diligence findings memo (synthesis, evidence citations, professional language) |
+
+TC-19 through TC-21 introduce **judgment traps** — professional-services reasoning challenges that aren't purely numerical. These are tracked in a separate judgment trap registry (`judgment_trap_registry.json`) and scored through evidence expectations in the gold standards.
+
+### File format policy
+
+V1 packs may generate files in these formats: `.xlsx`, `.docx`, `.pdf`, `.csv`, `.md`, `.txt`.
+
+The following formats are **not supported** in v1 and must not be introduced without adding canary extraction, file-open, and grader support: `.eml`, `.msg`, `.html`, `.pptx`.
 
 ## Running Tests Against an Agent
 
@@ -144,7 +204,7 @@ Each test case is scored 1–3 on five dimensions:
 
 After each agent improvement cycle:
 
-1. Re-run all 18 test cases (the fixed seed ensures identical inputs).
+1. Re-run all test cases for the selected packs (the fixed seed ensures identical inputs).
 2. Compare scores to the prior run.
 3. Flag any regressions (score decreased on any dimension).
 4. Track improvement trends over time.
