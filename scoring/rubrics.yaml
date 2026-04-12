@@ -287,6 +287,32 @@ test_cases:
       2: "Flagged some special items but missed participation exemption/WHT interaction or treaty rate analysis incomplete"
       1: "No flagging of special handling items; silent about discrepancies"
 
+  TC-08-EU:
+    title: "European R&D Incentive Computation (France CIR & Germany Forschungszulage)"
+    service_line: Tax
+    difficulty: Complex
+    capabilities: [File Reading, Data Analysis, File Writing]
+    correctness:
+      3: "CIR computed correctly: eligible personnel with 43% forfaitaire overhead; supplies included; subcontracted R&D with public organism 2x multiplier; 30% credit rate applied; Forschungszulage computed on time-weighted personnel costs only at 25% with EUR 2M assessment basis cap; consolidated benefit sums both correctly"
+      2: "CIR rate correct but forfaitaire overhead omitted or subcontractor multiplier missed; Forschungszulage computed but cap not applied or full salaries used instead of time-weighted; consolidated benefit close but not exact"
+      1: "Applied US IRC Section 41 four-part test or ASC formula; single credit computed instead of dual-jurisdiction; materially wrong amounts"
+    completeness:
+      3: "All deliverables: CIR computation with eligible spend breakdown (personnel, supplies, subcontractors); Forschungszulage computation with personnel cost detail; project-by-project Frascati qualification analysis for all 14 projects; consolidated benefit schedule; ERR-EU-008 maintenance contract flagged"
+      2: "Both credits computed but missing project-level qualification detail or one expense category omitted; ERR-EU-008 not flagged"
+      1: "Only one jurisdiction computed; no project qualification analysis; missing major expense categories"
+    format_compliance:
+      3: "Valid xlsx with EUR formatting; separate sections for CIR and Forschungszulage; clear entity identification (CM Lyon / CP Munich); opens without errors"
+      2: "Functional but mixed jurisdictions in single section or unclear entity attribution"
+      1: "Broken file or computations not traceable to source data"
+    robustness:
+      3: "Correctly identified Frascati Manual criteria (not US 4-part test); no multi-year averaging applied; public organism subcontractor correctly doubled; maintenance contract (EUR 12,400) excluded from qualifying spend; borderline projects analysed with reasoned conclusion"
+      2: "Frascati criteria used but borderline projects not separately discussed; maintenance contract included in qualifying spend; no multi-year averaging (correct)"
+      1: "Applied US 4-part test; used ASC 730 base-period averaging; maintenance contract not questioned; borderline projects auto-qualified"
+    communication:
+      3: "Flagged ERR-EU-008 maintenance contract misclassification; explained Frascati vs US 4-part test distinction; stated why no multi-year averaging; noted public organism multiplier rationale; documented borderline project treatment"
+      2: "Some methodology explanation but missing error detection or Frascati distinction not articulated"
+      1: "No error detection; no methodology explanation; no distinction between CIR and Forschungszulage requirements"
+
   TC-07:
     title: "K-1 Extraction & Consolidation"
     service_line: Tax
