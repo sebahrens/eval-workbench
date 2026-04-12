@@ -33,6 +33,7 @@ from generator.schema_metadata import (
     is_unsupported_path,
 )
 from generator.tui.draft_service import DraftService
+from generator.tui.validation_panel import ValidationPanel
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -133,6 +134,9 @@ class CompanyProfileScreen(Screen):
             with Horizontal(classes="button-bar"):
                 yield Button("Reset All", id="btn-reset", variant="warning")
                 yield Button("Validate", id="btn-validate", variant="default")
+
+        # Validation error panel (outside scroll, pinned at bottom)
+        yield ValidationPanel(id="validation-panel")
         yield Footer()
 
     def _compose_field(self, meta: FieldMeta) -> ComposeResult:
@@ -283,15 +287,19 @@ class CompanyProfileScreen(Screen):
     # ------------------------------------------------------------------
 
     def action_save(self) -> None:
-        """Validate and notify the parent to trigger save."""
+        """Validate and notify the parent to trigger save.
+
+        Blocks dismiss when hard errors are present.
+        """
         result = self.service.validate()
+        panel = self.query_one("#validation-panel", ValidationPanel)
+        panel.result = result
         if result.valid:
+            panel.clear()
             self.notify("Configuration is valid.", title="Validation")
             self.dismiss(True)
         else:
-            self.notify(
-                "\n".join(result.errors), title="Validation Failed", severity="error"
-            )
+            self.notify("Fix validation errors before saving.", severity="error")
 
     def _reset_all_fields(self) -> None:
         """Reset all company/subsidiary/financial fields to base values."""
@@ -305,12 +313,23 @@ class CompanyProfileScreen(Screen):
 
     def _run_validation(self) -> None:
         result = self.service.validate()
+        panel = self.query_one("#validation-panel", ValidationPanel)
+        panel.result = result
         if result.valid:
+            panel.clear()
             self.notify("Configuration is valid.", title="Validation")
-        else:
-            self.notify(
-                "\n".join(result.errors), title="Validation Failed", severity="error"
-            )
+
+    def on_validation_panel_go_to_field(
+        self, event: ValidationPanel.GoToField
+    ) -> None:
+        """Scroll to and focus the widget identified by a field path."""
+        field_id = event.field_path.replace(".", "-")
+        try:
+            widget = self.query_one(f"#fld-{field_id}")
+            widget.scroll_visible()
+            widget.focus()
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # Helpers
