@@ -201,15 +201,49 @@ class DraftService:
     # Save
     # ------------------------------------------------------------------
 
-    def save(self, output_path: str | Path) -> None:
+    def save(
+        self,
+        output_path: str | Path,
+        *,
+        force: bool = False,
+        validate: bool = True,
+    ) -> None:
         """Atomically save the draft override to a YAML file.
 
         Only the override (delta) is saved, not the full merged config.
         The base config.yaml is never modified.
 
         Uses write-to-temp + rename for atomicity.
+
+        Parameters
+        ----------
+        output_path : str | Path
+            Destination for the override YAML.
+        force : bool
+            If False (default) and *output_path* already exists, raises
+            ``FileExistsError`` instead of silently overwriting.
+        validate : bool
+            If True (default), validates the merged config before saving.
+            Raises ``ConfigError`` if the merged config is invalid.
         """
         output_path = Path(output_path)
+
+        # Guard: validate merged config before writing anything
+        if validate:
+            result = self.validate()
+            if not result.valid:
+                raise ConfigError(
+                    "Cannot save: merged config is invalid. "
+                    + "; ".join(result.errors)
+                )
+
+        # Guard: refuse to overwrite without force
+        if not force and output_path.exists():
+            raise FileExistsError(
+                f"Override file already exists: {output_path}. "
+                "Pass force=True to overwrite."
+            )
+
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Write to a temp file in the same directory, then rename

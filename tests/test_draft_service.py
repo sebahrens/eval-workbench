@@ -304,18 +304,55 @@ class TestSave:
         service.save(out)
         assert out.exists()
 
-    def test_save_is_atomic_on_overwrite(
+    def test_save_refuses_overwrite_without_force(
         self, service: DraftService, tmp_path: Path
     ) -> None:
-        """Overwriting an existing file uses atomic rename."""
+        """Saving to an existing file without force=True raises FileExistsError."""
         out = tmp_path / "override.yaml"
         out.write_text("old content")
 
         service.set_field("seed", 99)
-        service.save(out)
+        with pytest.raises(FileExistsError, match="already exists"):
+            service.save(out)
+
+        # Original content is untouched
+        assert out.read_text() == "old content"
+
+    def test_save_overwrites_with_force(
+        self, service: DraftService, tmp_path: Path
+    ) -> None:
+        """Overwriting an existing file uses atomic rename when force=True."""
+        out = tmp_path / "override.yaml"
+        out.write_text("old content")
+
+        service.set_field("seed", 99)
+        service.save(out, force=True)
 
         saved = yaml.safe_load(out.read_text())
         assert saved["seed"] == 99
+
+    def test_save_validates_before_writing(
+        self, service: DraftService, tmp_path: Path
+    ) -> None:
+        """Save rejects invalid merged config before touching disk."""
+        from generator.config import ConfigError
+
+        # Break the config with invalid seasonal weights
+        service.set_field("company.seasonal_weights.Q1", 0.99)
+        out = tmp_path / "invalid_override.yaml"
+        with pytest.raises(ConfigError, match="Cannot save"):
+            service.save(out)
+
+        assert not out.exists()
+
+    def test_save_skips_validation_when_disabled(
+        self, service: DraftService, tmp_path: Path
+    ) -> None:
+        """validate=False skips pre-save validation."""
+        service.set_field("company.seasonal_weights.Q1", 0.99)
+        out = tmp_path / "no_validate.yaml"
+        service.save(out, validate=False)
+        assert out.exists()
 
     def test_saved_draft_reloads_into_service(
         self, base_yaml: Path, service: DraftService, tmp_path: Path
@@ -331,3 +368,19 @@ class TestSave:
         svc2.load_draft(out)
         assert svc2.get_field_value("company.name") == "RoundTrip"
         assert svc2.get_field_value("seed") == 77
+
+    def test_saved_draft_reloads_through_layered_config(
+        self, base_yaml: Path, service: DraftService, tmp_path: Path
+    ) -> None:
+        """Acceptance criteria: saved YAML reloads through load_layered_config."""
+        from generator.config import load_layered_config
+
+        service.set_field("company.name", "LayeredCo")
+        service.set_field("seed", 55)
+        out = tmp_path / "override.yaml"
+        service.save(out)
+
+        # Load through the layered config loader (base + overlay)
+        config = load_layered_config(base_yaml, layers=[out])
+        assert config.company.name == "LayeredCo"
+        assert config.seed == 55
