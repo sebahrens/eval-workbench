@@ -13,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import random
 import sys
 from pathlib import Path
@@ -26,7 +27,9 @@ from generator.errors import ErrorRegistry
 from generator.golds.framework import emit_all_golds
 from generator.manifest import Manifest
 from generator.model.build import build_model
+from generator.model.fidelity_report import build_fidelity_report
 from generator.packs import collect_canary_keys, collect_test_case_count, resolve_packs
+from generator.scenario_context import ScenarioContext
 from scoring.scoring_template import generate_scoring_template
 
 
@@ -82,13 +85,14 @@ def generate(
     # ── Canary & error registries ────────────────────────────────────
     canaries = build_canary_registry(canary_keys, seed=config.seed)
     errors = ErrorRegistry()
+    ctx = ScenarioContext(seed=config.seed)
 
     with Manifest(output) as manifest:
         # ── Phase 2: Run pack emitters ───────────────────────────────
         for pack in packs:
             manifest.set_current_pack(pack.pack_id)
             for emitter in pack.emitters:
-                emitter(model, output, canaries, errors, manifest)
+                emitter(model, output, canaries, errors, manifest, ctx=ctx)
         manifest.set_current_pack("")
 
         # ── Emit gold standards ──────────────────────────────────────
@@ -112,6 +116,14 @@ def generate(
 
         manifest.register("canary_registry.json", "json")
         manifest.register("error_registry.json", "json")
+
+        # ── Fidelity regression report ──────────────────────────────
+        fidelity = build_fidelity_report(model)
+        (output / "fidelity_report.json").write_text(
+            json.dumps(fidelity, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        manifest.register("fidelity_report.json", "json")
 
     return manifest
 
