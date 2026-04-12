@@ -261,6 +261,32 @@ test_cases:
       2: "Some error detection but missed stale rate or Pillar Two reasoning incomplete"
       1: "No error detection; no mention of IAS 12 vs ASC 740 considerations"
 
+  TC-07-EU:
+    title: "European Partnership Investment Allocation Extraction & Consolidation"
+    service_line: Tax
+    difficulty: Adversarial
+    capabilities: [File Reading, Data Analysis, File Writing]
+    correctness:
+      3: "All 8 allocation statements extracted correctly from 4 languages (DE/FR/NL/EN); amended statement changes identified (EUR 340K profit -> EUR 285K + EUR 55K interest); GBP amounts converted at 1.17; consolidated totals exact; participation exemption correctly identified for >=5% holdings"
+      2: "Most statements correct; amendment detected but amounts slightly off; GBP conversion present but imprecise; participation exemption partially identified"
+      1: "Multiple extraction errors; missed amendment or GBP conversion; participation exemption not identified"
+    completeness:
+      3: "All 4 sheets (Allocation Detail, Consolidated Summary, WHT Credit Schedule, Special Handling Flags); per-investment categorisation; participation exemption analysis; WHT treaty rate analysis; partner share cross-reference; IAS 28 classification review"
+      2: "Most sheets present but missing WHT treaty analysis or participation exemption detail"
+      1: "Missing sheets or major computation steps; no per-investment breakdown"
+    format_compliance:
+      3: "Valid xlsx with EUR formatting; 4 named sheets; clear investment identification; opens without errors"
+      2: "Functional but inconsistent formatting or unclear investment labeling"
+      1: "Broken file or computations not traceable"
+    robustness:
+      3: "Handled 4-language extraction (DE Gewinnanteil/Mieteinnahmen, FR Revenus fonciers, NL Winstaandeel, EN); parsed EUR comma-decimal and GBP period-decimal; processed 2 scanned-style PDFs; identified KORRIGIERT marker; WHT 20% NRL vs 15% treaty flagged; partner share 4.8% vs 5.0% caught"
+      2: "Most languages handled but misread one non-English term or missed scanned PDF amounts; WHT or share discrepancy partially noted"
+      1: "Failed on non-English statements; missed both planted errors"
+    communication:
+      3: "Flagged participation exemption with WHT credit interaction; identified WHT treaty rate mismatch with reclaimable excess; noted partner share discrepancy and boundary condition; explained IAS 28 board-seat justification; assessed ATAD/CFC considerations"
+      2: "Flagged some special items but missed participation exemption/WHT interaction or treaty rate analysis incomplete"
+      1: "No flagging of special handling items; silent about discrepancies"
+
   TC-07:
     title: "K-1 Extraction & Consolidation"
     service_line: Tax
