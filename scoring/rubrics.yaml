@@ -313,6 +313,32 @@ test_cases:
       2: "Some methodology explanation but missing error detection or Frascati distinction not articulated"
       1: "No error detection; no methodology explanation; no distinction between CIR and Forschungszulage requirements"
 
+  TC-09-EU:
+    title: "OECD Transfer Pricing Documentation (Master File / Local File)"
+    service_line: Tax
+    difficulty: Complex
+    capabilities: [File Reading, Data Analysis, Document Generation]
+    correctness:
+      3: "All 5 IC flows analyzed; CP margin 6.2% within IQR 3.8%-7.9%; CD margin 1.8% within IQR 1.2%-3.5%; loan rate 4.5% within 4.3%-5.3%; ERR-EU-005 decimal error detected; royalty direction verified; benefit test flagged"
+      2: "Most flows analyzed; one margin miscalculated (±0.3%); ERR-EU-005 detected but impact incomplete; royalty direction not questioned"
+      1: "Critical margin errors; ERR-EU-005 missed; single-entity analysis only; no DEMPE assessment"
+    completeness:
+      3: "Master file + 2 local files (CP update, CD new); all BEPS Action 13 sections; 25 comparables screened with 5 rejections across 2 pools; interest rate analysis complete; management fee benefit test"
+      2: "Both tiers present but missing sections; comparable screening incomplete (≥3 but <5 rejections); interest benchmarking partial; no CD local file"
+      1: "Single TP report instead of master/local split; missing comparable screening or interest analysis; no new CD local file"
+    format_compliance:
+      3: "Valid docx/xlsx; BEPS Action 13 two-tier structure; EUR formatting; professional OECD language; separate sheets per comparable pool"
+      2: "Functional but non-standard document organization; merged comparable pools; inconsistent EU formatting"
+      1: "Broken files or US-style single local file; incompatible with OECD guidelines"
+    robustness:
+      3: "Rejected size outlier (OECD ¶3.43-3.46); separate IQRs per pool; flagged EURIBOR decimal error impact; verified royalty direction against functional analysis; DEMPE awareness demonstrated"
+      2: "Standard rejections correct but size outlier missed; pools merged; EURIBOR error detected but not quantified; royalty direction not cross-referenced"
+      1: "Failed comparable screening; single pool; EURIBOR error missed; no functional analysis cross-reference"
+    communication:
+      3: "Explained BEPS Action 13 structure; flagged ERR-EU-005 with adjustment; discussed DEMPE for royalty; recommended repricing if needed; benefit test for management fees; post-Brexit UK considerations"
+      2: "Some OECD structure but missing DEMPE or benefit test; adequate margin explanation"
+      1: "No BEPS/DEMPE reference; no error flagging; US-style language and framework"
+
   TC-07:
     title: "K-1 Extraction & Consolidation"
     service_line: Tax
