@@ -56,7 +56,6 @@ from generator.model.tp_eu import (
     DIST_COMPARABLES,
     ENTITY_JURISDICTIONS,
     ENTITY_NAMES,
-    EURIBOR_ERR_EU_005_CORRECT,
     EURIBOR_ERR_EU_005_WRONG,
     FINISHED_GOODS_MARKUP_EU,
     IC_LOAN_PRINCIPAL_EU,
@@ -570,7 +569,7 @@ def _write_master_file_pdf(
              ["Enhancement", "CM (France)", "Ongoing improvement of existing products and processes"],
              ["Maintenance", "CM (France)", "Quality control, patent maintenance, regulatory compliance"],
              ["Protection", "CM / CE", "Patent filing and defence (CM), legal oversight (CE)"],
-             ["Exploitation", "CM \u2192 CP (license)", "CM licenses technology to CP for manufacturing; CP pays royalty"]]
+             ["Exploitation", "CM \u2192 CP (license)", "CM licenses technology to CP for manufacturing; CP pays royalty"]]  # noqa: E501
     story.append(_tbl(dempe, [1.5*inch, 1.5*inch, 3.5*inch]))
     story.append(Spacer(1, 0.3*inch))
     story.append(Paragraph(
@@ -612,8 +611,8 @@ def _write_master_file_pdf(
     ic = [["Transaction", "Flow", "Method", "FY2024 Volume"],
           ["Raw Materials", "CP \u2192 CM", f"Cost-Plus-{float(RAW_MATERIALS_MARKUP_EU)*100:.0f}%", "~\u20ac8.5M"],
           ["Finished Goods", "CP \u2192 CD", f"Cost-Plus-{float(FINISHED_GOODS_MARKUP_EU)*100:.0f}%", "~\u20ac6.2M"],
-          ["Management Fees", "CE \u2192 CP/CM/CD", f"{float(MANAGEMENT_FEE_PCT_EU)*100:.1f}% of revenue", "~\u20ac1.47M"],
-          ["Intercompany Loan", "CE \u2192 CM", f"{float(IC_LOAN_RATE_EU)*100:.1f}% p.a.", f"\u20ac{int(IC_LOAN_PRINCIPAL_EU):,} principal"],
+          ["Management Fees", "CE \u2192 CP/CM/CD", f"{float(MANAGEMENT_FEE_PCT_EU)*100:.1f}% of revenue", "~\u20ac1.47M"],  # noqa: E501
+          ["Intercompany Loan", "CE \u2192 CM", f"{float(IC_LOAN_RATE_EU)*100:.1f}% p.a.", f"\u20ac{int(IC_LOAN_PRINCIPAL_EU):,} principal"],  # noqa: E501
           ["R&D Royalty", "CM \u2192 CP", f"{float(ROYALTY_RATE_EU)*100:.0f}% of CP revenue", "~\u20ac1.35M"]]
     story.append(_tbl(ic, [1.5*inch, 1.5*inch, 1.5*inch, 1.5*inch], alt=True))
     story.append(PageBreak())
@@ -705,10 +704,10 @@ def _write_master_file_pdf(
 
     story.append(Paragraph("Appendix B: Intercompany Agreement List", h1))
     agr = [["Agreement", "Parties", "Effective", "Terms"],
-           ["Raw Materials Supply Agreement", "CP \u2192 CM", "2019", f"Cost-plus-{float(RAW_MATERIALS_MARKUP_EU)*100:.0f}%"],
-           ["Finished Goods Distribution Agreement", "CP \u2192 CD", "2023", f"Cost-plus-{float(FINISHED_GOODS_MARKUP_EU)*100:.0f}%"],
-           ["Group Management Services Agreement", "CE \u2192 All", "2018", f"{float(MANAGEMENT_FEE_PCT_EU)*100:.1f}% of revenue"],
-           ["Intercompany Loan Agreement", "CE \u2192 CM", "2023", f"\u20ac{int(IC_LOAN_PRINCIPAL_EU):,} at {float(IC_LOAN_RATE_EU)*100:.1f}% p.a."],
+           ["Raw Materials Supply Agreement", "CP \u2192 CM", "2019", f"Cost-plus-{float(RAW_MATERIALS_MARKUP_EU)*100:.0f}%"],  # noqa: E501
+           ["Finished Goods Distribution Agreement", "CP \u2192 CD", "2023", f"Cost-plus-{float(FINISHED_GOODS_MARKUP_EU)*100:.0f}%"],  # noqa: E501
+           ["Group Management Services Agreement", "CE \u2192 All", "2018", f"{float(MANAGEMENT_FEE_PCT_EU)*100:.1f}% of revenue"],  # noqa: E501
+           ["Intercompany Loan Agreement", "CE \u2192 CM", "2023", f"\u20ac{int(IC_LOAN_PRINCIPAL_EU):,} at {float(IC_LOAN_RATE_EU)*100:.1f}% p.a."],  # noqa: E501
            ["Technology License Agreement", "CM \u2192 CP", "2019", f"{float(ROYALTY_RATE_EU)*100:.0f}% of CP revenue"]]
     story.append(_tbl(agr, [2.5*inch, 1.2*inch, 1*inch, 1.8*inch]))
     story.append(PageBreak())
@@ -863,8 +862,8 @@ def _write_local_file_cp_pdf(
     story.append(Paragraph("3. Controlled Transactions", h1))
     story.append(Paragraph("CP engages in the following controlled transactions:", body))
     ct = [["#", "Transaction", "Counterparty", "Method", "FY2024 Volume"],
-          ["1", "Purchase of raw materials", "CM (seller)", f"Cost-Plus-{float(RAW_MATERIALS_MARKUP_EU)*100:.0f}%", "~\u20ac8.5M"],
-          ["2", "Sale of finished goods", "CD (buyer)", f"Cost-Plus-{float(FINISHED_GOODS_MARKUP_EU)*100:.0f}%", "~\u20ac6.2M"],
+          ["1", "Purchase of raw materials", "CM (seller)", f"Cost-Plus-{float(RAW_MATERIALS_MARKUP_EU)*100:.0f}%", "~\u20ac8.5M"],  # noqa: E501
+          ["2", "Sale of finished goods", "CD (buyer)", f"Cost-Plus-{float(FINISHED_GOODS_MARKUP_EU)*100:.0f}%", "~\u20ac6.2M"],  # noqa: E501
           ["3", "Management fee", "CE (provider)", f"{float(MANAGEMENT_FEE_PCT_EU)*100:.1f}% of rev", "~\u20ac675K"],
           ["4", "R&D royalty", "CM (licensor)", f"{float(ROYALTY_RATE_EU)*100:.0f}% of rev", "~\u20ac1.35M"]]
     story.append(_tbl(ct, [0.4*inch, 2*inch, 1.3*inch, 1.5*inch, 1.3*inch]))
@@ -1176,8 +1175,8 @@ def _tc09_eu_gold(
                 "accepted": dist_iqr["accepted_count"],
                 "rejected": dist_iqr["rejected_count"],
                 "rejections": [
-                    {"company": "InterGlobal Captive Logistics SA", "reason": "Captive entity \u2014 no independent pricing"},
-                    {"company": "Jupiter Restructuring Services GmbH", "reason": "Restructuring losses \u2014 non-recurring"},
+                    {"company": "InterGlobal Captive Logistics SA", "reason": "Captive entity \u2014 no independent pricing"},  # noqa: E501
+                    {"company": "Jupiter Restructuring Services GmbH", "reason": "Restructuring losses \u2014 non-recurring"},  # noqa: E501
                 ],
             },
             "mfg_iqr_analysis": {

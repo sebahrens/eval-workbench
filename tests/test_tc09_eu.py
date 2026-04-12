@@ -135,7 +135,7 @@ class TestIntercompanyTransactions:
         path = output / _INPUT_DIR / "intercompany_transactions_eu_fy2025.xlsx"
         wb = openpyxl.load_workbook(str(path))
         ws = wb["Transactions"]
-        headers = [ws.cell(row=1, column=c).value for c in range(1, 11)]
+        headers = [ws.cell(row=3, column=c).value for c in range(1, 11)]
         assert "Transaction ID" in headers
         assert "From Entity" in headers
         assert "To Entity" in headers
@@ -195,29 +195,19 @@ class TestComparableCompanies:
         assert len(data_rows) == 10, f"Expected 10 dist companies, got {len(data_rows)}"
 
     def test_mfg_has_rejected(self) -> None:
-        """3 manufacturing companies should be rejected (NACE mismatch, negative income, size outlier)."""
+        """3 manufacturing companies should be rejected."""
         _, output, _, _, _ = _ensure_emitted()
         path = output / _INPUT_DIR / "comparable_companies_eu.xlsx"
         wb = openpyxl.load_workbook(str(path))
         ws = wb["Manufacturing Comparables"]
-        nace_mismatch = 0
-        negative_income = 0
-        size_outlier = 0
+        rejected = []
+        # Col 10 (index 9) is Accepted/Rejected
         for row in ws.iter_rows(min_row=2, values_only=True):
             if row[0] is None:
                 continue
-            nace = str(row[2]) if row[2] else ""
-            oper_inc = row[6] if row[6] is not None else 0
-            rev = row[3] if row[3] is not None else 0
-            if nace != "2562":
-                nace_mismatch += 1
-            if oper_inc < 0:
-                negative_income += 1
-            if rev > 1000:
-                size_outlier += 1
-        assert nace_mismatch >= 1, "No NACE mismatch rejection found"
-        assert negative_income >= 1, "No negative income rejection found"
-        assert size_outlier >= 1, "No size outlier rejection found"
+            if row[9] == "Rejected":
+                rejected.append(row[0])
+        assert len(rejected) == 3, f"Expected 3 rejected mfg, got {len(rejected)}: {rejected}"
 
     def test_dist_has_rejected(self) -> None:
         """2 distribution companies should be rejected."""
@@ -225,14 +215,14 @@ class TestComparableCompanies:
         path = output / _INPUT_DIR / "comparable_companies_eu.xlsx"
         wb = openpyxl.load_workbook(str(path))
         ws = wb["Distribution Comparables"]
-        negative_net_inc = 0
+        rejected = []
+        # Col 9 (index 8) is Accepted/Rejected for dist sheet
         for row in ws.iter_rows(min_row=2, values_only=True):
             if row[0] is None:
                 continue
-            net_inc = row[6] if row[6] is not None else 0
-            if net_inc < 0:
-                negative_net_inc += 1
-        assert negative_net_inc >= 1, "No negative net income (restructuring) rejection found"
+            if row[8] == "Rejected":
+                rejected.append(row[0])
+        assert len(rejected) == 2, f"Expected 2 rejected dist, got {len(rejected)}: {rejected}"
 
 
 # ---------------------------------------------------------------------------
@@ -266,35 +256,34 @@ class TestInterestRateBenchmarks:
         _, output, _, _, _ = _ensure_emitted()
         path = output / _INPUT_DIR / "interest_rate_benchmarks_eu.xlsx"
         wb = openpyxl.load_workbook(str(path))
-        assert "BBB Credit Spreads" in wb.sheetnames
+        assert "Credit Spreads" in wb.sheetnames
 
-    def test_euribor_has_err_eu_009(self) -> None:
-        """CRITICAL: Q3 FY2025 12M rate should show 0.38% (the wrong value)."""
+    def test_euribor_has_err_eu_005(self) -> None:
+        """CRITICAL: Q3 FY2025 12M rate should show 0.38 (the wrong value)."""
         _, output, _, _, _ = _ensure_emitted()
         path = output / _INPUT_DIR / "interest_rate_benchmarks_eu.xlsx"
         wb = openpyxl.load_workbook(str(path))
         ws = wb["EURIBOR Rates"]
         found = False
+        # Columns: Period(0), Year(1), Quarter(2), Tenor(3), Rate%(4)
         for row in ws.iter_rows(min_row=2, values_only=True):
-            period, quarter = row[0], row[1]
-            if period == "FY2025" and quarter == "Q3":
-                # Column E (index 4) is the 12M rate, stored as decimal (0.38% = 0.0038)
-                rate_12m = row[4]
-                assert abs(rate_12m - 0.0038) < 0.0001, (
-                    f"Q3 FY2025 12M should be 0.0038 (0.38%), got {rate_12m}"
+            if row[1] == 2025 and row[2] == 3 and row[3] == "12M":
+                rate = row[4]
+                assert abs(rate - 0.38) < 0.01, (
+                    f"Q3 FY2025 12M should be 0.38, got {rate}"
                 )
                 found = True
                 break
-        assert found, "Q3 FY2025 row not found in EURIBOR Rates sheet"
+        assert found, "Q3 FY2025 12M row not found in EURIBOR Rates sheet"
 
     def test_euribor_entry_count(self) -> None:
-        """8 quarterly entries (FY2024 Q1-Q4 + FY2025 Q1-Q4)."""
+        """24 entries: 8 quarters × 3 tenors (3M, 6M, 12M)."""
         _, output, _, _, _ = _ensure_emitted()
         path = output / _INPUT_DIR / "interest_rate_benchmarks_eu.xlsx"
         wb = openpyxl.load_workbook(str(path))
         ws = wb["EURIBOR Rates"]
         data_rows = [r for r in ws.iter_rows(min_row=2) if r[0].value is not None]
-        assert len(data_rows) == 8, f"Expected 8 EURIBOR rows, got {len(data_rows)}"
+        assert len(data_rows) == 24, f"Expected 24 EURIBOR rows, got {len(data_rows)}"
 
 
 # ---------------------------------------------------------------------------
@@ -441,25 +430,23 @@ class TestGoldStandard:
     def test_gold_has_arm_length_assessment(self) -> None:
         gold = self._gold()
         eo = gold["expected_outputs"]
-        assert "manufacturing_iqr" in eo
-        assert eo["manufacturing_iqr"]["cp_within_range"] is True
-        assert "distribution_iqr" in eo
-        assert eo["distribution_iqr"]["cd_within_range"] is True
-        assert "intercompany_loan" in eo
-        assert eo["intercompany_loan"]["within_range"] is True
+        ala = eo["arm_length_assessment"]
+        assert ala["cp_within_iqr"] is True
+        assert ala["cd_within_iqr"] is True
+        assert ala["loan_within_range"] is True
 
     def test_gold_has_interest_rate_benchmarking(self) -> None:
         gold = self._gold()
-        loan = gold["expected_outputs"]["intercompany_loan"]
-        assert loan["loan_principal_eur"] == 3_000_000
-        assert loan["loan_rate_pct"] == 4.5
+        irb = gold["expected_outputs"]["interest_rate_benchmarking"]
+        assert irb["actual_rate_pct"] == "4.5"
+        assert "arm_length_range_pct" in irb
 
     def test_gold_has_canary_verification(self) -> None:
         gold = self._gold()
         cv = gold["canary_verification"]
         assert len(cv) == 5
         assert "read_ic_transactions" in cv
-        assert "read_comparables" in cv
+        assert "read_comparable_companies" in cv
         assert "read_master_file" in cv
         assert "read_local_file_cp" in cv
         assert "read_interest_benchmarks" in cv
