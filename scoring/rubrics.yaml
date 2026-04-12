@@ -157,6 +157,32 @@ test_cases:
       2: "Mentioned some uncertainties but not consistently across all problematic leases"
       1: "No flagging of uncertainties; no mention of judgment calls or OCR issues"
 
+  TC-04-EU:
+    title: "IFRS 16 Lease Extraction & Schedule Population (European Variant)"
+    service_line: Audit
+    difficulty: Adversarial
+    capabilities: [File Reading, Data Analysis, File Writing]
+    correctness:
+      3: "All 15 leases extracted with correct terms; 2 short-term exemptions identified; 1 low-value exemption identified with threshold stated; 3 amendments correctly applied; no operating/finance classification (IFRS 16 single model respected)"
+      2: "12-14 leases correct; identifies most amendments; may classify some leases as operating/finance; low-value exemption partially identified"
+      1: "Fewer than 12 leases correct; applies ASC 842 operating/finance classification; misses low-value exemption entirely"
+    completeness:
+      3: "Complete IFRS 16 schedule with all required fields (IBR, ROU asset, lease liability); all 15 leases populated; EUR formatting correct"
+      2: "Schedule populated but missing IBR/ROU/liability for some leases or missing 1-2 leases; EUR formatting mostly correct"
+      1: "Incomplete schedule with major gaps; missing IFRS 16-specific columns"
+    format_compliance:
+      3: "Valid xlsx matching partial schedule format; consistent EUR formatting; DD.MM.YYYY date conventions; opens without errors"
+      2: "Functional but format doesn't match existing entries or mixed date/currency formatting"
+      1: "Broken file or format incompatible with existing schedule"
+    robustness:
+      3: "Handled European date formats (DD.MM.YYYY); correctly parsed EUR amounts with period separator; flagged OCR uncertainties; identified date format ambiguity (DD/MM vs MM/DD)"
+      2: "Handled text-native PDFs well but struggled with European formatting; some EUR amounts misinterpreted; date ambiguity not flagged"
+      1: "Failed on European date/currency formats; misinterpreted EUR amounts (e.g., 12.500 as 12.5); silently inserted OCR errors"
+    communication:
+      3: "Flagged uncertain extractions from scanned PDFs; explicitly noted IFRS 16 single model (no operating/finance split); highlighted date format ambiguity; stated low-value threshold (~EUR 4,500)"
+      2: "Mentioned some uncertainties but didn't address IFRS 16 vs ASC 842 distinction or low-value threshold"
+      1: "No flagging of uncertainties; no mention of IFRS 16 considerations; no discussion of European formatting issues"
+
   TC-05:
     title: "Audit Workpaper Memo — Accounts Receivable"
     service_line: Audit

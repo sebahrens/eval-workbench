@@ -101,6 +101,7 @@ def generate(
             canaries, errors, output / "gold_standards",
             tc_ids=active_tcs,
             model=model,
+            ctx=ctx,
         )
 
         # ── Scoring template ─────────────────────────────────────────
