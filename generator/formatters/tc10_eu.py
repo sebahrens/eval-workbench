@@ -262,7 +262,7 @@ def _write_ic_sales_xlsx(
         error_id="ERR-EU-010",
         file=f"{_INPUT_DIR}/tc10eu_intercompany_sales_fy2025.xlsx",
         location="Sheet 'Intercompany Sales', CE\u2192CM Q3 management fee row",
-        type="vat_treatment_error",
+        type="classification_error",
         description=(
             "CE (Netherlands) invoiced CM (France) for Q3 management fees "
             f"(\u20ac{_whole_euros(ERR_EU_010_AMOUNT):,}) with 20% French VAT "
