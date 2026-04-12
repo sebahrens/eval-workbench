@@ -44,6 +44,8 @@ from generator.canaries import (
     embed_canary_xlsx,
 )
 from generator.errors import ErrorRegistry, PlantedError, mismatch_total, transpose_digits
+from generator.noise import ExclusionZone, apply_csv_noise, make_noise_rng
+from generator.scenario_context import ScenarioContext
 from generator.golds.framework import GoldStandard, register_gold
 from generator.manifest import Manifest
 from generator.model.bank import (
@@ -153,6 +155,16 @@ def _write_bank_csv(
         if "," in desc:
             desc = f'"{desc}"'
         lines.append(f"{date_str},{desc},{amt_str},{bal_str}\n")
+
+    # ── Controlled noise (csv_stdlib family pilot) ───────────────────
+    # Protect canary line (index 0), comment lines (1-5), header (6),
+    # and the ERR-002 transaction row.
+    err_row_idx = 7 + err_txn_idx  # 7 = first data row
+    excl = ExclusionZone(rows={0, 1, 2, 3, 4, 5, 6, err_row_idx})
+    noise_rng = make_noise_rng(
+        ScenarioContext(seed=42), _TC, "bank_statement_dec2025",
+    )
+    lines = apply_csv_noise(lines, noise_rng, excl)
 
     path.write_text("".join(lines))
 
@@ -606,6 +618,7 @@ def emit_tc02(
     canaries: CanaryRegistry,
     errors: ErrorRegistry,
     manifest: Manifest,
+    **kwargs: object,
 ) -> None:
     """Write all TC-02 files to *output_dir*."""
     _write_bank_csv(model, output_dir, canaries, errors, manifest)

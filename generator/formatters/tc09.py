@@ -1914,6 +1914,7 @@ def emit_tc09(
     canaries: CanaryRegistry,
     errors: ErrorRegistry,
     manifest: Manifest,
+    **kwargs: object,
 ) -> None:
     """Emit all TC-09 files."""
     _write_ic_transactions_xlsx(model, output_dir, canaries, errors, manifest)

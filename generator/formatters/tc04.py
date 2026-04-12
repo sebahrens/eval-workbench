@@ -928,6 +928,7 @@ def emit_tc04(
     canaries: CanaryRegistry,
     errors: ErrorRegistry,
     manifest: Manifest,
+    **kwargs: object,
 ) -> None:
     """Write all TC-04 files to *output_dir*."""
     leases = model.leases

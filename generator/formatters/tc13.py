@@ -432,6 +432,7 @@ def emit_tc13(
     canaries: CanaryRegistry,
     errors: ErrorRegistry,
     manifest: Manifest,
+    **kwargs: object,
 ) -> None:
     """Emit all TC-13 files."""
     _write_ap_csv(model, output_dir, canaries, manifest)

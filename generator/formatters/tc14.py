@@ -1004,6 +1004,7 @@ def emit_tc14(
     canaries: CanaryRegistry,
     errors: ErrorRegistry,
     manifest: Manifest,
+    **kwargs: object,
 ) -> None:
     """Write all TC-14 files to *output_dir*."""
     _write_balance_sheet(model, output_dir, canaries, errors, manifest)

@@ -781,6 +781,7 @@ def emit_tc21(
     canaries: CanaryRegistry,
     errors: ErrorRegistry,
     manifest: Manifest,
+    **kwargs: object,
 ) -> None:
     """Write all TC-21 files to *output_dir*."""
     _write_curated_contracts(output_dir, canaries, manifest)

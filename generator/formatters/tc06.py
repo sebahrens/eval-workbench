@@ -902,6 +902,7 @@ def emit_tc06(
     canaries: CanaryRegistry,
     errors: ErrorRegistry,
     manifest: Manifest,
+    **kwargs: object,
 ) -> None:
     """Write all TC-06 files to *output_dir*."""
     _write_consolidated_tb(model, output_dir, canaries, errors, manifest)

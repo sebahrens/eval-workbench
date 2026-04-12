@@ -30,6 +30,7 @@ def _emit_templates_compat(
     canaries: object,
     errors: object,
     manifest: object,
+    **kwargs: object,
 ) -> None:
     """Adapter: emit_templates ignores model and errors."""
     _emit_templates_raw(output_dir, canaries, manifest)  # type: ignore[arg-type]

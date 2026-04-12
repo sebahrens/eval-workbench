@@ -1225,6 +1225,7 @@ def emit_tc11(
     canaries: CanaryRegistry,
     errors: ErrorRegistry,
     manifest: Manifest,
+    **kwargs: object,
 ) -> None:
     """Write all TC-11 files to *output_dir*."""
     _write_monthly_pl(model, output_dir, canaries, errors, manifest)

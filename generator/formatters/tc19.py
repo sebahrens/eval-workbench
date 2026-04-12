@@ -501,6 +501,7 @@ def emit_tc19(
     canaries: CanaryRegistry,
     errors: ErrorRegistry,
     manifest: Manifest,
+    **kwargs: object,
 ) -> None:
     """Write all TC-19 files to *output_dir*."""
     _write_contracts(output_dir, canaries, manifest)

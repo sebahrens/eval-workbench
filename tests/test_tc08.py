@@ -100,7 +100,7 @@ class TestTimeRecordsCSV:
         """Should have ~2,340 data rows (45 emp × 52 weeks)."""
         _, output, _, _, _ = _ensure_emitted()
         path = output / f"{_INPUT_DIR}/rd_employee_time_records.csv"
-        lines = path.read_text().splitlines()
+        lines = path.read_text(encoding="utf-8-sig").splitlines()
         # First line is canary comment, second is header, rest are data
         data_lines = [ln for ln in lines if ln and not ln.startswith("#")]
         data_row_count = len(data_lines) - 1  # subtract header
@@ -111,8 +111,8 @@ class TestTimeRecordsCSV:
     def test_has_expected_columns(self) -> None:
         _, output, _, _, _ = _ensure_emitted()
         path = output / f"{_INPUT_DIR}/rd_employee_time_records.csv"
-        lines = path.read_text().splitlines()
-        # Skip canary comment line(s)
+        lines = path.read_text(encoding="utf-8-sig").splitlines()
+        # Skip canary comment line(s) — BOM-tolerant via utf-8-sig encoding
         header_line = next(ln for ln in lines if not ln.startswith("#"))
         headers = header_line.split(",")
         assert "employee_id" in headers
@@ -124,12 +124,12 @@ class TestTimeRecordsCSV:
     def test_45_unique_employees(self) -> None:
         _, output, _, _, _ = _ensure_emitted()
         path = output / f"{_INPUT_DIR}/rd_employee_time_records.csv"
-        lines = path.read_text().splitlines()
+        lines = path.read_text(encoding="utf-8-sig").splitlines()
         non_comment = [ln for ln in lines if ln and not ln.startswith("#")]
-        # Parse employee_id from first column
+        # Parse employee_id from first column (strip quotes added by noise)
         emp_ids = set()
         for line in non_comment[1:]:  # skip header
-            emp_id = line.split(",")[0]
+            emp_id = line.split(",")[0].strip('" ')
             emp_ids.add(emp_id)
         assert len(emp_ids) == RD_EMPLOYEE_COUNT, (
             f"Expected {RD_EMPLOYEE_COUNT} unique employees, got {len(emp_ids)}"

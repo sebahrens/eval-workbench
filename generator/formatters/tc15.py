@@ -1596,6 +1596,7 @@ def emit_tc15(
     canaries: CanaryRegistry,
     errors: ErrorRegistry,
     manifest: Manifest,
+    **kwargs: object,
 ) -> None:
     """Emit all TC-15 files."""
     hist = _write_historical_xlsx(model, output_dir, canaries, errors, manifest)

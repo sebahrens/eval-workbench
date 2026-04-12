@@ -2255,6 +2255,7 @@ def emit_tc12(
     canaries: CanaryRegistry,
     errors: ErrorRegistry,
     manifest: Manifest,
+    **kwargs: object,
 ) -> None:
     """Write all TC-12 files to *output_dir*."""
     # 01_corporate

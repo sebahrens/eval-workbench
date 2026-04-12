@@ -32,6 +32,8 @@ from openpyxl.styles import Alignment, Font, PatternFill
 
 from generator.canaries import CanaryRegistry, embed_canary_docx, embed_canary_xlsx
 from generator.errors import ErrorRegistry, PlantedError, date_inconsistency, missing_data
+from generator.noise import apply_docx_noise, make_noise_rng
+from generator.scenario_context import ScenarioContext
 from generator.golds.framework import GoldStandard, register_gold
 from generator.manifest import Manifest
 from generator.model.ar import (
@@ -690,6 +692,14 @@ def _copy_template(
     doc.core_properties.created = _FIXED_DATETIME
     doc.core_properties.modified = _FIXED_DATETIME
 
+    # ── Controlled noise (docx_python_docx family pilot) ────────────
+    # No paragraphs need exclusion — no planted errors in the template.
+    # Canary lives in core_properties.comments, which noise never touches.
+    noise_rng = make_noise_rng(
+        ScenarioContext(seed=42), _TC, "workpaper_memo_template",
+    )
+    apply_docx_noise(doc, noise_rng)
+
     dest = output_dir / _INPUT_DIR / "workpaper_memo_template.docx"
     dest.parent.mkdir(parents=True, exist_ok=True)
     _save_docx_deterministic(doc, dest)
@@ -890,6 +900,7 @@ def emit_tc05(
     canaries: CanaryRegistry,
     errors: ErrorRegistry,
     manifest: Manifest,
+    **kwargs: object,
 ) -> None:
     """Write all TC-05 files to *output_dir*."""
     aging = generate_ar_aging(model.revenue_records, year=2025)

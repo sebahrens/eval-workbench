@@ -952,6 +952,7 @@ def emit_tc17(
     canaries: CanaryRegistry,
     errors: ErrorRegistry,
     manifest: Manifest,
+    **kwargs: object,
 ) -> None:
     """Write all TC-17 files to *output_dir*.
 

@@ -529,6 +529,7 @@ def emit_tc20(
     canaries: CanaryRegistry,
     errors: ErrorRegistry,
     manifest: Manifest,
+    **kwargs: object,
 ) -> None:
     """Write all TC-20 files to *output_dir*."""
     _write_agreements(output_dir, canaries, manifest)

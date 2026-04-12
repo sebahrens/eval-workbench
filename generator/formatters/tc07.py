@@ -753,6 +753,7 @@ def emit_tc07(
     canaries: CanaryRegistry,
     errors: ErrorRegistry,
     manifest: Manifest,
+    **kwargs: object,
 ) -> None:
     """Write all TC-07 files to *output_dir*."""
     investments = generate_k1_investments()

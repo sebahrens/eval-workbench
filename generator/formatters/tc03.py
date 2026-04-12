@@ -1380,6 +1380,7 @@ def emit_tc03(
     canaries: CanaryRegistry,
     errors: ErrorRegistry,
     manifest: Manifest,
+    **kwargs: object,
 ) -> None:
     """Emit all TC-03 files."""
     _write_revenue_xlsx(model, output_dir, canaries, errors, manifest)

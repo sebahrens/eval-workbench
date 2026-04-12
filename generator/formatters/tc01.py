@@ -47,6 +47,8 @@ from generator.model.consolidation import (
     build_income_statement,
     consolidated_trial_balance_eliminated,
 )
+from generator.noise import ExclusionZone, apply_xlsx_noise, make_noise_rng
+from generator.scenario_context import ScenarioContext
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -156,6 +158,8 @@ def _write_messy_tb(
     canaries: CanaryRegistry,
     errors: ErrorRegistry,
     manifest: Manifest,
+    *,
+    ctx: ScenarioContext | None = None,
 ) -> dict[str, int]:
     """Write cascade_tb_fy2025.xlsx — the messy client trial balance.
 
@@ -303,6 +307,23 @@ def _write_messy_tb(
     ws.column_dimensions["D"].width = 16
     ws.column_dimensions["E"].width = 16
     ws.column_dimensions["F"].width = 16
+
+    # ── Controlled noise (xlsx_openpyxl family pilot) ────────────────
+    # Protect merged title rows, ERR-001 balance cell, and all numeric
+    # balance cells (model fact preservation).  Canary lives in document
+    # properties, not in a cell, so no cell exclusion needed for it.
+    excl = ExclusionZone()
+    # Protect merged title area (rows 1-3)
+    for r in range(1, 4):
+        for c in range(1, 7):
+            excl.cells.add((ws.title, r, c))
+    # Protect all numeric balance cells (columns 3-5) — model facts
+    for r in range(header_row + 1, row + 1):
+        for c in (3, 4, 5):
+            excl.cells.add((ws.title, r, c))
+    noise_ctx = ctx if ctx is not None else ScenarioContext(seed=42)
+    noise_rng = make_noise_rng(noise_ctx, _TC, "cascade_tb_fy2025")
+    apply_xlsx_noise(wb, noise_rng, excl)
 
     # ── Save ─────────────────────────────────────────────────────────
     path = output_dir / _INPUT_DIR / "cascade_tb_fy2025.xlsx"
@@ -884,9 +905,12 @@ def emit_tc01(
     canaries: CanaryRegistry,
     errors: ErrorRegistry,
     manifest: Manifest,
+    *,
+    ctx: ScenarioContext | None = None,
+    **kwargs: object,
 ) -> None:
     """Write all TC-01 files to *output_dir*."""
-    _write_messy_tb(model, output_dir, canaries, errors, manifest)
+    _write_messy_tb(model, output_dir, canaries, errors, manifest, ctx=ctx)
     _write_prior_year_workpaper(model, output_dir, canaries, manifest)
     _write_signed_financials_pdf(model, output_dir, canaries, manifest)
     _write_prompt(output_dir)
