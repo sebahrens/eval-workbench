@@ -648,3 +648,45 @@ def test_layered_rejects_unknown_in_overlay(minimal_yaml: Path, tmp_path: Path) 
     overlay.write_text("packs: [accounting]\n")
     with pytest.raises(ConfigError, match="Unknown key.*config root"):
         load_layered_config(minimal_yaml, layers=[overlay])
+
+
+# ---------------------------------------------------------------------------
+# load_layered_config with set_overrides parameter (synth-data-2u6.3)
+# ---------------------------------------------------------------------------
+
+def test_layered_set_overrides_seed(minimal_yaml: Path) -> None:
+    """set_overrides changes the seed in the final config."""
+    cfg = load_layered_config(minimal_yaml, set_overrides={"seed": 99})
+    assert cfg.seed == 99
+
+
+def test_layered_set_overrides_nested(minimal_yaml: Path) -> None:
+    """set_overrides deep-merges nested keys."""
+    cfg = load_layered_config(
+        minimal_yaml,
+        set_overrides={"company": {"name": "OverrideCo"}},
+    )
+    assert cfg.company.name == "OverrideCo"
+
+
+def test_layered_set_overrides_after_file_layers(
+    minimal_yaml: Path, tmp_path: Path,
+) -> None:
+    """set_overrides is applied after file layers (last wins)."""
+    overlay = tmp_path / "overlay.yaml"
+    overlay.write_text("company:\n  name: FromFile\n")
+    cfg = load_layered_config(
+        minimal_yaml,
+        layers=[overlay],
+        set_overrides={"company": {"name": "FromSet"}},
+    )
+    assert cfg.company.name == "FromSet"
+
+
+def test_layered_set_overrides_rejects_unknown(minimal_yaml: Path) -> None:
+    """set_overrides with unknown top-level keys fails validation."""
+    with pytest.raises(ConfigError, match="Unknown key"):
+        load_layered_config(
+            minimal_yaml,
+            set_overrides={"magic_mode": True},
+        )

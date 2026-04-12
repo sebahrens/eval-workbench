@@ -6,6 +6,8 @@ Usage:
     python generate_test_suite.py --config config.yaml --output /tmp/test_suite
     python generate_test_suite.py --output /tmp/test_suite --packs all
     python generate_test_suite.py --output /tmp/test_suite --packs cascade_legal_hr_diligence
+    python generate_test_suite.py --output /tmp/test_suite --overlay small.yaml difficulty.yaml
+    python generate_test_suite.py --output /tmp/test_suite --set company.name="Acme Corp" seed=99
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ import numpy as np
 from faker import Faker
 
 from generator.canaries import build_registry as build_canary_registry
-from generator.config import Config, ConfigError, load_config
+from generator.config import Config, ConfigError, load_config, load_layered_config
 from generator.errors import ErrorRegistry
 from generator.golds.framework import emit_all_golds
 from generator.manifest import Manifest
@@ -114,6 +116,54 @@ def generate(
     return manifest
 
 
+def parse_set_overrides(pairs: list[str]) -> dict:
+    """Parse ``--set key=value`` pairs into a nested dict.
+
+    Each *pair* is ``dotted.key=value``.  Numeric strings are coerced to
+    ``int`` or ``float`` where possible; ``"true"``/``"false"`` become bools;
+    ``"null"`` becomes ``None``.
+
+    >>> parse_set_overrides(["company.name=Acme", "seed=99"])
+    {'company': {'name': 'Acme'}, 'seed': 99}
+    """
+    result: dict = {}
+    for pair in pairs:
+        if "=" not in pair:
+            raise ConfigError(f"--set value must be key=value, got {pair!r}")
+        key, raw_value = pair.split("=", 1)
+        if not key:
+            raise ConfigError(f"--set key must not be empty in {pair!r}")
+
+        value: object = _coerce_value(raw_value)
+
+        # Build nested dict from dotted key path
+        parts = key.split(".")
+        node = result
+        for part in parts[:-1]:
+            node = node.setdefault(part, {})
+        node[parts[-1]] = value
+    return result
+
+
+def _coerce_value(raw: str) -> object:
+    """Coerce a CLI string value to the most specific Python type."""
+    if raw.lower() == "null":
+        return None
+    if raw.lower() == "true":
+        return True
+    if raw.lower() == "false":
+        return False
+    try:
+        return int(raw)
+    except ValueError:
+        pass
+    try:
+        return float(raw)
+    except ValueError:
+        pass
+    return raw
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description="Generate the Cascade Industries test suite.",
@@ -121,7 +171,28 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--config",
         default="config.yaml",
-        help="Path to the configuration YAML file (default: config.yaml)",
+        help="Path to the base configuration YAML file (default: config.yaml)",
+    )
+    parser.add_argument(
+        "--overlay",
+        nargs="+",
+        default=None,
+        metavar="YAML",
+        help=(
+            "One or more overlay YAML files merged onto the base config in order. "
+            "Each file may contain any subset of v1 supported fields."
+        ),
+    )
+    parser.add_argument(
+        "--set",
+        nargs="+",
+        default=None,
+        dest="set_overrides",
+        metavar="KEY=VALUE",
+        help=(
+            "Leaf-level config overrides in dotted-key=value form. "
+            "Applied after --overlay files. Example: --set company.name=Acme seed=99"
+        ),
     )
     parser.add_argument(
         "--output",
@@ -142,7 +213,16 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     try:
-        config = load_config(args.config)
+        has_layers = args.overlay or args.set_overrides
+        if has_layers:
+            set_dict = parse_set_overrides(args.set_overrides) if args.set_overrides else None
+            config = load_layered_config(
+                args.config,
+                layers=args.overlay,
+                set_overrides=set_dict,
+            )
+        else:
+            config = load_config(args.config)
     except ConfigError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)

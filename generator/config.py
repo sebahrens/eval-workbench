@@ -373,11 +373,19 @@ def _load_yaml(path: Path) -> dict:
 def load_layered_config(
     base_path: str | Path,
     layers: list[str | Path] | None = None,
+    set_overrides: dict | None = None,
 ) -> Config:
     """Load a base config and merge zero or more overlay layers on top.
 
     Each layer is deep-merged onto the base in order (last wins). After
     merging, the combined result is validated and returned as a Config.
+
+    Parameters
+    ----------
+    base_path : path to the base YAML config file.
+    layers : optional list of overlay YAML file paths, merged in order.
+    set_overrides : optional dict of leaf-level overrides (e.g. from
+        ``--set key=value`` CLI flags).  Applied after file layers.
 
     Layer files may contain any subset of v1 supported fields.
     """
@@ -387,6 +395,9 @@ def load_layered_config(
         for layer_path in layers:
             layer_raw = _load_yaml(Path(layer_path))
             base_raw = deep_merge(base_raw, layer_raw)
+
+    if set_overrides:
+        base_raw = deep_merge(base_raw, set_overrides)
 
     # Validate and parse the merged result through the same path as load_config
     _require_keys(base_raw, _REQUIRED_TOP, "config root (merged)")
