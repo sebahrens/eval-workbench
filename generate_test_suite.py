@@ -168,6 +168,27 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description="Generate the Cascade Industries test suite.",
     )
+    subparsers = parser.add_subparsers(dest="command")
+
+    # ── configure subcommand (TUI) ──────────────────────────────────
+    configure_parser = subparsers.add_parser(
+        "configure",
+        help="Launch the scenario configuration TUI (requires synth-data[tui]).",
+    )
+    configure_parser.add_argument(
+        "--config",
+        default="config.yaml",
+        help="Path to the base configuration YAML file (default: config.yaml)",
+    )
+    configure_parser.add_argument(
+        "--overlay",
+        nargs="+",
+        default=None,
+        metavar="YAML",
+        help="One or more overlay YAML files merged onto the base config in order.",
+    )
+
+    # ── generate (default) arguments ────────────────────────────────
     parser.add_argument(
         "--config",
         default="config.yaml",
@@ -196,7 +217,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument(
         "--output",
-        required=True,
+        default=None,
         help="Output directory for the generated test suite",
     )
     parser.add_argument(
@@ -211,6 +232,16 @@ def main(argv: list[str] | None = None) -> None:
         ),
     )
     args = parser.parse_args(argv)
+
+    # ── Dispatch subcommands ────────────────────────────────────────
+    if args.command == "configure":
+        from generator.tui.app import configure
+        configure(config_path=args.config, overlay=args.overlay)
+        return
+
+    # ── Generate (default) ──────────────────────────────────────────
+    if not args.output:
+        parser.error("the following arguments are required: --output")
 
     try:
         has_layers = args.overlay or args.set_overrides

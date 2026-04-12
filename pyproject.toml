@@ -20,6 +20,9 @@ dev = [
     "pytest>=8.3.4,<9",
     "ruff>=0.8.4,<1",
 ]
+tui = [
+    "textual>=0.89,<1",
+]
 
 [build-system]
 requires = ["hatchling"]
