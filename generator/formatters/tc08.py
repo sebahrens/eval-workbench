@@ -56,6 +56,8 @@ from generator.model.rd import (
     TimeRecord,
     generate_rd_projects,
 )
+from generator.noise import apply_csv_noise, apply_docx_noise, make_noise_rng
+from generator.scenario_context import ScenarioContext
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -128,6 +130,8 @@ def _write_time_records_csv(
     output_dir: Path,
     canaries: CanaryRegistry,
     manifest: Manifest,
+    *,
+    ctx: ScenarioContext | None = None,
 ) -> list[TimeRecord]:
     """Write rd_employee_time_records.csv and return the records."""
     records = model.rd_time_records
@@ -146,23 +150,34 @@ def _write_time_records_csv(
         "activity_description",
     ]
 
+    # Build lines in memory so we can apply noise before writing.
+    lines: list[str] = [canary_line, ",".join(columns) + "\n"]
+    for rec in records:
+        desc = rec.activity_description
+        if "," in desc or '"' in desc:
+            desc = '"' + desc.replace('"', '""') + '"'
+        row = [
+            rec.employee_id,
+            rec.week_ending.isoformat(),
+            rec.project_code,
+            str(rec.hours),
+            desc,
+        ]
+        lines.append(",".join(row) + "\n")
+
+    # ── Controlled noise (csv_stdlib family pilot) ───────────────────
+    # Canary line (index 0) is auto-protected by apply_csv_noise.
+    # Header line (index 1) is excluded to preserve column names.
+    from generator.noise import ExclusionZone
+    noise_ctx = ctx if ctx is not None else ScenarioContext(seed=42)
+    noise_rng = make_noise_rng(noise_ctx, "TC-08", _KEY_TIME_RECORDS)
+    excl = ExclusionZone(rows={1})  # protect header row
+    lines = apply_csv_noise(lines, noise_rng, excl)
+
     abs_path.parent.mkdir(parents=True, exist_ok=True)
     with open(abs_path, "w", newline="") as f:
-        f.write(canary_line)
-        f.write(",".join(columns) + "\n")
-
-        for rec in records:
-            desc = rec.activity_description
-            if "," in desc or '"' in desc:
-                desc = '"' + desc.replace('"', '""') + '"'
-            row = [
-                rec.employee_id,
-                rec.week_ending.isoformat(),
-                rec.project_code,
-                str(rec.hours),
-                desc,
-            ]
-            f.write(",".join(row) + "\n")
+        for line in lines:
+            f.write(line)
 
     canaries.set_location(
         _KEY_TIME_RECORDS,
@@ -220,6 +235,15 @@ def _write_project_descriptions(
 
         doc.add_heading("Methodology", level=2)
         doc.add_paragraph(proj.methodology)
+
+        # ── Controlled noise (docx_python_docx family pilot) ────────
+        # Canary lives in core_properties.comments — apply_docx_noise
+        # never touches that field.  No planted errors in project
+        # description docs, so no paragraph exclusions needed.
+        noise_rng = make_noise_rng(
+            ScenarioContext(seed=42), "TC-08", file_key,
+        )
+        apply_docx_noise(doc, noise_rng)
 
         rel_path = f"{_PROJ_DESC_DIR}/{proj.code}.docx"
         abs_path = output_dir / rel_path
@@ -701,9 +725,12 @@ def emit_tc08(
     canaries: CanaryRegistry,
     errors: ErrorRegistry,
     manifest: Manifest,
+    *,
+    ctx: ScenarioContext | None = None,
+    **kwargs: object,
 ) -> None:
     """Emit all TC-08 files."""
-    _write_time_records_csv(model, output_dir, canaries, manifest)
+    _write_time_records_csv(model, output_dir, canaries, manifest, ctx=ctx)
     _write_project_descriptions(output_dir, canaries, manifest)
     _write_payroll(model, output_dir, canaries, errors, manifest)
     _write_supply_expenses(model, output_dir, canaries, errors, manifest)
