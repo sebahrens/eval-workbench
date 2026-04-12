@@ -1,0 +1,326 @@
+# Formatter-Family Matrix for Controlled Document Noise
+# =====================================================
+#
+# Defines the coverage surface for presentation-noise transforms.
+# Each family groups files by output library + format so noise helpers
+# can target the correct DOM layer (cells, paragraphs, PDF ops, rows).
+#
+# Referenced by:
+#   - synth-data-8ok.5  (noise profile implementation)
+#   - synth-data-8ok.9  (canary-preservation tests)
+#
+# Legend:
+#   canary_pattern   — how canaries are embedded in this family
+#   noise_surface    — what controlled noise may touch
+#   risk             — what could go wrong for canaries / model facts
+#   representative   — one TC + file chosen for pilot validation
+#   tc_coverage      — all TCs that produce files in this family
+
+families:
+
+  # ── Spreadsheet families ──────────────────────────────────────────
+
+  xlsx_openpyxl:
+    description: >
+      Excel workbooks written via openpyxl.  The dominant output family —
+      trial balances, aging schedules, payroll registers, financial models.
+    library: openpyxl
+    format: xlsx
+    file_count: 37
+    tc_coverage:
+      - TC-01   # trial balance, prior-year workpaper
+      - TC-02   # bank reconciliation
+      - TC-03   # AR confirmations
+      - TC-04   # inventory
+      - TC-05   # lease schedules
+      - TC-06   # PP&E schedules
+      - TC-08   # payroll, R&D supply expenses
+      - TC-09   # IC transactions, comparable companies
+      - TC-10   # AP aging
+      - TC-11   # P&L, management adjustments
+      - TC-12   # historical financials, projections, schedules
+      - TC-14   # benefit plans
+      - TC-15   # provision workpapers
+      - TC-16   # fee schedule
+      - TC-17   # financial summary workpaper
+      - TC-18   # prior-year workpapers (rollforward)
+      - TC-19   # diligence request list
+      - TC-20   # engagement financials
+      - TC-21   # workforce analytics
+    canary_pattern: >
+      Cell in a designated "Notes" or "Reference" column, or a named cell
+      in a hidden/metadata sheet.  Location recorded via canaries.set_location().
+    noise_surface:
+      - date_format_variation: "Mix M/D/YYYY, MM-DD-YYYY, YYYY-MM-DD within a sheet"
+      - header_perturbation: "Minor casing or abbreviation drift (e.g., 'Acct No' vs 'Account Number')"
+      - empty_row_insertion: "Random blank rows between sections (common in client exports)"
+      - merged_cell_jitter: "Occasionally merge header cells slightly differently"
+      - trailing_whitespace: "Pad some cell values with trailing spaces"
+    risk: >
+      Canaries live in cell values.  Noise must not overwrite canary cells.
+      Header perturbation must skip the canary column header.
+      Merged-cell changes could shift canary cell references.
+    representative:
+      tc: TC-01
+      file: cascade_tb_fy2025.xlsx
+      rationale: >
+        Highest-traffic workbook; canary in Notes column; planted error
+        ERR-001 present.  If noise breaks this file it breaks the flagship TC.
+
+  csv_stdlib:
+    description: >
+      CSV files written via Python csv module or pandas to_csv.
+      Small family — time records, text-heavy tabular data.
+    library: csv (stdlib)
+    format: csv
+    file_count: 4
+    tc_coverage:
+      - TC-08   # rd_employee_time_records.csv
+      - TC-13   # COA export
+      - TC-18   # prior-year CSV workpapers
+    canary_pattern: >
+      Dedicated column value or trailing comment field in a row.
+    noise_surface:
+      - quoting_variation: "Inconsistent quoting (some fields quoted, some not)"
+      - delimiter_hint: "Include a file with semicolon delimiter (common EU export)"
+      - encoding_bom: "Optionally prepend UTF-8 BOM (common in Excel CSV exports)"
+      - trailing_newline: "Vary whether file ends with trailing newline"
+    risk: >
+      CSV is plain text — canaries are just cell values.  Low risk as long
+      as noise helpers don't rewrite cell content.  BOM insertion is safe
+      since canary search should be BOM-tolerant.
+    representative:
+      tc: TC-08
+      file: rd_employee_time_records.csv
+      rationale: >
+        Largest CSV; canary embedded as column value; straightforward
+        to verify canary survives quoting/BOM transforms.
+
+  # ── Document families ─────────────────────────────────────────────
+
+  docx_python_docx:
+    description: >
+      Word documents written via python-docx.  Memos, project descriptions,
+      engagement letters, management summaries, contract documents.
+    library: python-docx
+    format: docx
+    file_count: 19
+    tc_coverage:
+      - TC-03   # confirmation letters
+      - TC-05   # lease abstracts
+      - TC-06   # asset transfer memos
+      - TC-08   # R&D project descriptions
+      - TC-10   # vendor correspondence
+      - TC-11   # management interview notes
+      - TC-12   # management Q&A, due-diligence memos
+      - TC-14   # benefit plan summaries
+      - TC-16   # client profile, engagement letter template
+      - TC-17   # deliverable memos
+      - TC-18   # prior-year docx workpapers
+      - TC-19   # contracts, amendments, management memo
+      - TC-20   # engagement scope memo
+      - TC-21   # workforce memos
+    canary_pattern: >
+      Paragraph text (usually a "Reference:" line or document-properties
+      description).  Some use embed_canary_docx() helper which appends a
+      small-font paragraph at document end.
+    noise_surface:
+      - font_jitter: "Vary font size ±0.5pt or family on non-heading paragraphs"
+      - paragraph_spacing: "Randomize before/after spacing slightly"
+      - header_footer_noise: "Add 'DRAFT' watermark or page-number style variation"
+      - metadata_clutter: "Set author/company/title to plausible but varied values"
+      - section_break_type: "Vary continuous vs next-page section breaks"
+    risk: >
+      Canaries in paragraph text could be disrupted by font-jitter if the
+      helper rewrites paragraph runs.  Must operate on Run.font, not
+      Run.text.  embed_canary_docx() paragraphs must be on a skip list.
+    representative:
+      tc: TC-08
+      file: rd_project_descriptions/RD-001.docx
+      rationale: >
+        One of 12 project-description docs — representative of the
+        "many small docx" pattern.  Canary is paragraph text.
+
+  docx_template_copy:
+    description: >
+      Word documents that are copies of static templates (not generated
+      from scratch).  The template is copied into the TC input_files dir.
+    library: python-docx (copy + minor edit)
+    format: docx
+    file_count: 2
+    tc_coverage:
+      - TC-16   # engagement_letter_template.docx (copied from templates/)
+      - TC-17   # deliverable_cover_page.docx (emitted by templates.py)
+    canary_pattern: >
+      Same as docx_python_docx — canary set after copy via set_location.
+    noise_surface:
+      - same as docx_python_docx, but changes must not corrupt merge fields
+        or placeholder tokens that the template is designed to carry.
+    risk: >
+      Templates contain {{merge_field}} placeholders that must survive
+      noise transforms intact.  Noise helpers need a merge-field skip list.
+    representative:
+      tc: TC-16
+      file: engagement_letter_template.docx
+      rationale: Template-copy path is distinct from generated-docx path.
+
+  # ── PDF families ──────────────────────────────────────────────────
+
+  pdf_reportlab:
+    description: >
+      PDF files generated via reportlab (platypus/canvas).  Multi-page
+      documents: signed financials, industry overviews, audit reports,
+      customer contracts.
+    library: reportlab
+    format: pdf
+    file_count: ~15
+    tc_coverage:
+      - TC-01   # cascade_financials_fy2024_signed.pdf
+      - TC-02   # bank_statement pages
+      - TC-03   # AR confirmation PDFs
+      - TC-04   # inventory count sheets
+      - TC-09   # tp_report_fy2024.pdf
+      - TC-11   # customer contracts
+      - TC-12   # industry_overview.pdf, CIM, management presentations
+      - TC-15   # tax authority correspondence
+    canary_pattern: >
+      Text drawn on a page (usually footer or a "Ref:" line) plus
+      PDF metadata (Subject or Keywords field).
+    noise_surface:
+      - page_margin_jitter: "Vary margins ±0.1in across pages"
+      - scan_artifact: "Light grey rectangles or dots simulating scanner noise"
+      - rotation_micro: "Rotate page content ±0.5° (simulating scan skew)"
+      - font_substitution: "Swap Helvetica↔Arial on non-heading text"
+      - metadata_clutter: "Set Producer/Creator to plausible scanner strings"
+    risk: >
+      reportlab canaries are drawn text — coordinate shifts from margin
+      jitter or rotation could move them off-page.  Canary text must be
+      placed after noise transforms, or noise must skip canary-bearing
+      drawing operations.  PDF metadata canaries could be overwritten by
+      metadata_clutter — the clutter helper must preserve Subject/Keywords
+      if they contain a canary.
+    representative:
+      tc: TC-01
+      file: cascade_financials_fy2024_signed.pdf
+      rationale: >
+        Flagship PDF (8 pages); canary in footer + metadata; planted
+        error ERR-003 tests cross-file integrity.
+
+  pdf_fpdf2:
+    description: >
+      PDF files generated via fpdf2.  Simpler documents: formatting
+      guides, inventory tags.
+    library: fpdf2
+    format: pdf
+    file_count: ~4
+    tc_coverage:
+      - TC-04   # inventory count tags
+      - TC-07   # estimate support PDFs
+      - TC-17   # formatting_guide.pdf (via templates.py)
+    canary_pattern: >
+      Text cell or footer text via FPDF.cell()/FPDF.text(), plus
+      creation_date/modification_date set explicitly for determinism.
+    noise_surface:
+      - same categories as pdf_reportlab, but fpdf2 API differs
+      - cell_padding_jitter: "Vary internal cell padding in table-like layouts"
+    risk: >
+      fpdf2 coordinate system is simpler — less risk of off-page canary
+      drift.  But fpdf2 does not support metadata fields as richly as
+      reportlab, so canaries rely more heavily on drawn text.
+    representative:
+      tc: TC-07
+      file: estimate_support_*.pdf
+      rationale: >
+        Small-format PDF; tests fpdf2-specific canary embedding
+        (embed_canary_pdf_fpdf2 helper).
+
+  # ── Structured data families ──────────────────────────────────────
+
+  json_gold_standards:
+    description: >
+      Gold-standard JSON files emitted by golds/framework.py.  One per TC.
+      These are reference answers, not input files — noise is NOT applied.
+    library: json (stdlib)
+    format: json
+    file_count: 21
+    tc_coverage: [TC-01 through TC-21]
+    canary_pattern: >
+      Gold JSON contains canary_verification dict but does not itself
+      carry a file canary — it IS the verification reference.
+    noise_surface: []   # Intentionally excluded — see rationale below
+    exclusion_rationale: >
+      Gold standards are the ground truth for scoring.  Applying noise
+      would corrupt the grading rubric.  Any "realism" noise belongs
+      in the input files, not the expected outputs.
+    representative:
+      tc: TC-01
+      file: gold_standards/TC-01_gold.json
+
+  json_registries:
+    description: >
+      Canary registry, error registry, judgment-trap registry, and manifest.
+      Machine-readable metadata files.
+    library: json (stdlib)
+    format: json
+    file_count: 4
+    tc_coverage: []   # Cross-cutting — not per-TC
+    canary_pattern: N/A — these files define canaries, not carry them
+    noise_surface: []   # Intentionally excluded
+    exclusion_rationale: >
+      Registry files are the source of truth for verification.  Noise
+      would make the test suite unverifiable.
+
+  yaml_config:
+    description: config.yaml and rubrics.yaml — generator and scorer configuration.
+    library: pyyaml
+    format: yaml
+    file_count: 2
+    tc_coverage: []   # Infrastructure, not test-case output
+    canary_pattern: N/A
+    noise_surface: []   # Intentionally excluded
+    exclusion_rationale: >
+      Configuration files control generation — they are not output
+      artifacts and must remain clean for reproducibility.
+
+  # ── Markdown / plain-text families ────────────────────────────────
+
+  markdown_prompts:
+    description: >
+      Per-TC prompt.md and expected_behavior.md files.  Human-readable
+      test instructions, not machine-processed data.
+    library: plain text (str.write)
+    format: md
+    file_count: ~42
+    tc_coverage: [TC-01 through TC-21]
+    canary_pattern: N/A — prompts don't carry canaries
+    noise_surface: []   # Intentionally excluded
+    exclusion_rationale: >
+      Prompts are instructions to the Agent Under Test.  Adding noise
+      would confuse the test, not improve realism.
+
+# ────────────────────────────────────────────────────────────────────
+# Summary
+# ────────────────────────────────────────────────────────────────────
+#
+# Families eligible for controlled noise (5):
+#   1. xlsx_openpyxl      — 37 files across 19 TCs (PILOT FIRST)
+#   2. csv_stdlib         — 4 files across 3 TCs
+#   3. docx_python_docx   — 19 files across 14 TCs
+#   4. pdf_reportlab      — ~15 files across 8 TCs
+#   5. pdf_fpdf2          — ~4 files across 3 TCs
+#
+# Families intentionally excluded (4):
+#   6. json_gold_standards — ground truth, noise would corrupt scoring
+#   7. json_registries     — metadata, noise would break verification
+#   8. yaml_config         — infrastructure, must stay deterministic
+#   9. markdown_prompts    — instructions, noise would confuse the agent
+#
+# Pilot recommendation (per synth-data-8ok.5 acceptance criteria):
+#   Start with xlsx_openpyxl (TC-01 cascade_tb_fy2025.xlsx) and
+#   csv_stdlib (TC-08 rd_employee_time_records.csv), then expand to
+#   docx_python_docx once canary-preservation tests (8ok.9) pass.
+#   PDF families should be last due to coordinate-system complexity.
+#
+# docx_template_copy is tracked separately from docx_python_docx
+# because merge-field preservation adds a constraint that generic
+# docx noise helpers don't account for.
