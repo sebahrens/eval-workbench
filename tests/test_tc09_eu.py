@@ -3,10 +3,10 @@
 Verifies:
 - Intercompany transactions XLSX (120+ rows, correct columns, all entity pairs)
 - Comparable companies XLSX (2 sheets: Manufacturing with 15 companies, Distribution with 10)
-- Interest rate benchmarks XLSX (EURIBOR rates + credit spreads, ERR-EU-005 planted)
+- Interest rate benchmarks XLSX (EURIBOR rates + credit spreads, ERR-EU-009 planted)
 - Master file PDF (exists, has canary in metadata)
 - Local file CP PDF (exists, has canary)
-- ERR-EU-005 planted error (registered, correct type "rounding_discrepancy", severity "material")
+- ERR-EU-009 planted error (registered, correct type "rounding_discrepancy", severity "material")
 - Canary embedding in all 5 files
 - Gold standard JSON (structure, expected outputs, scoring hints)
 - Prompt and expected behavior markdown files
@@ -357,36 +357,36 @@ class TestLocalFileCPPDF:
 
 
 # ---------------------------------------------------------------------------
-# ERR-EU-005 — EURIBOR decimal point error
+# ERR-EU-009 — EURIBOR decimal point error
 # ---------------------------------------------------------------------------
 
 
 class TestErrEU005:
-    """Verify ERR-EU-005: EURIBOR 12M Q3 FY2025 decimal point error.
+    """Verify ERR-EU-009: EURIBOR 12M Q3 FY2025 decimal point error.
 
-    Note: The error ID in the formatter is ERR-EU-005 (rounding_discrepancy).
+    Note: The error ID in the formatter is ERR-EU-009 (rounding_discrepancy).
     """
 
     def test_error_registered(self) -> None:
         _, _, _, errors, _ = _ensure_emitted()
-        assert "ERR-EU-005" in errors.entries
+        assert "ERR-EU-009" in errors.entries
 
     def test_error_type(self) -> None:
         _, _, _, errors, _ = _ensure_emitted()
-        assert errors.entries["ERR-EU-005"].type == "rounding_discrepancy"
+        assert errors.entries["ERR-EU-009"].type == "rounding_discrepancy"
 
     def test_error_severity(self) -> None:
         _, _, _, errors, _ = _ensure_emitted()
-        assert errors.entries["ERR-EU-005"].severity == "material"
+        assert errors.entries["ERR-EU-009"].severity == "material"
 
     def test_error_mentions_euribor(self) -> None:
         _, _, _, errors, _ = _ensure_emitted()
-        err = errors.entries["ERR-EU-005"]
+        err = errors.entries["ERR-EU-009"]
         assert "EURIBOR" in err.description or "euribor" in err.description.lower()
 
     def test_error_references_decimal_point(self) -> None:
         _, _, _, errors, _ = _ensure_emitted()
-        err = errors.entries["ERR-EU-005"]
+        err = errors.entries["ERR-EU-009"]
         assert "decimal" in err.description.lower() or "0.38" in err.description
 
 
@@ -453,7 +453,7 @@ class TestGoldStandard:
 
     def test_gold_has_error_detection(self) -> None:
         gold = self._gold()
-        assert "ERR-EU-005" in gold["error_detection"]
+        assert "ERR-EU-009" in gold["error_detection"]
 
     def test_gold_has_scoring_hints(self) -> None:
         gold = self._gold()

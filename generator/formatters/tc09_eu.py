@@ -6,7 +6,7 @@ Emits:
 - test_cases/TC-09-EU/input_files/comparable_companies_eu.xlsx
   Manufacturing (15) and distribution (10) comparables in two sheets
 - test_cases/TC-09-EU/input_files/interest_rate_benchmarks_eu.xlsx
-  EURIBOR rates + BBB credit spreads with ERR-EU-005 planted
+  EURIBOR rates + BBB credit spreads with ERR-EU-009 planted
 - test_cases/TC-09-EU/input_files/master_file_fy2024.pdf
   Prior year OECD master file (28 pages)
 - test_cases/TC-09-EU/input_files/local_file_cp_fy2024.pdf
@@ -16,7 +16,7 @@ Emits:
 - gold_standards/TC-09-EU_gold.json
 
 Planted error:
-  ERR-EU-005: rounding_discrepancy — Q3 FY2025 EURIBOR 12M rate entered as
+  ERR-EU-009: rounding_discrepancy — Q3 FY2025 EURIBOR 12M rate entered as
   0.38% instead of 3.85% (decimal point error).
 
 Uses deterministic EU transfer pricing model — never hardcodes numbers
@@ -56,7 +56,7 @@ from generator.model.tp_eu import (
     DIST_COMPARABLES,
     ENTITY_JURISDICTIONS,
     ENTITY_NAMES,
-    EURIBOR_ERR_EU_005_WRONG,
+    EURIBOR_ERR_EU_009_WRONG,
     FINISHED_GOODS_MARKUP_EU,
     IC_LOAN_PRINCIPAL_EU,
     IC_LOAN_RATE_EU,
@@ -310,7 +310,7 @@ def _write_interest_rate_benchmarks_xlsx(
     errors: ErrorRegistry,
     manifest: Manifest,
 ) -> None:
-    """Write interest_rate_benchmarks_eu.xlsx with ERR-EU-005 planted."""
+    """Write interest_rate_benchmarks_eu.xlsx with ERR-EU-009 planted."""
     canary = canaries.canary_for(_KEY_INTEREST_BENCHMARKS)
     euribor_data = generate_euribor_data()
     credit_data = generate_credit_spread_data()
@@ -336,7 +336,7 @@ def _write_interest_rate_benchmarks_xlsx(
         ws1.cell(row=row_idx, column=4, value=entry.tenor)
         rate_val = entry.rate_pct
         if entry.year == 2025 and entry.quarter == 3 and entry.tenor == "12M":
-            rate_val = EURIBOR_ERR_EU_005_WRONG
+            rate_val = EURIBOR_ERR_EU_009_WRONG
             err_row = row_idx
         cell = ws1.cell(row=row_idx, column=5, value=float(rate_val))
         cell.number_format = "0.00"
@@ -373,7 +373,7 @@ def _write_interest_rate_benchmarks_xlsx(
     manifest.register(rel_path, "xlsx")
 
     errors.add(PlantedError(
-        error_id="ERR-EU-005",
+        error_id="ERR-EU-009",
         file=f"{_INPUT_DIR}/interest_rate_benchmarks_eu.xlsx",
         location=f"Sheet 'EURIBOR Rates', Row {err_row}, Q3 FY2025 12M",
         type="rounding_discrepancy",
@@ -1091,7 +1091,7 @@ def _write_expected_behavior(output_dir: Path) -> None:
 - BBB industrial credit spread average: ~106 bps (avg of 110,105,100,110)
 - Arm's-length range: approximately 4.3% to 5.3%
 - Actual loan rate: {float(IC_LOAN_RATE_EU)*100:.1f}% \u2014 **within range**
-- **ERR-EU-005**: Q3 FY2025 EURIBOR 12M shows 0.38% instead of 3.85% \u2014
+- **ERR-EU-009**: Q3 FY2025 EURIBOR 12M shows 0.38% instead of 3.85% \u2014
   agent must identify this decimal point error
 
 ## Royalty Direction Verification
@@ -1106,7 +1106,7 @@ def _write_expected_behavior(output_dir: Path) -> None:
 - CE charges each subsidiary 1.5% of revenue
 - Agent should flag benefit test requirement per OECD Guidelines Chapter VII
 
-## ERR-EU-005 Detection
+## ERR-EU-009 Detection
 
 - EURIBOR 12M rate for Q3 FY2025 entered as 0.38% instead of 3.85%
 - Decimal point error that pulls down the average
@@ -1218,7 +1218,7 @@ def _tc09_eu_gold(
             "read_interest_benchmarks": canaries.canary_for(_KEY_INTEREST_BENCHMARKS),
         },
         error_detection={
-            "ERR-EU-005": (
+            "ERR-EU-009": (
                 "EURIBOR 12M Q3 FY2025 decimal point error: 0.38% instead of 3.85%. "
                 "Makes loan rate 4.5% appear above-market when it is actually within range."
             ),
@@ -1228,7 +1228,7 @@ def _tc09_eu_gold(
                 f"Manufacturing IQR must be Q1={mfg_iqr['q1_pct']}%, Q3={mfg_iqr['q3_pct']}%. "
                 f"Distribution IQR must be Q1={dist_iqr['q1_pct']}%, Q3={dist_iqr['q3_pct']}%. "
                 "CP margin ~6.2% within range. CD margin ~1.8% within range. "
-                "Loan rate 4.5% within 4.3%-5.3% range. ERR-EU-005 must be identified."
+                "Loan rate 4.5% within 4.3%-5.3% range. ERR-EU-009 must be identified."
             ),
             "completeness": (
                 "All five transaction types analysed with appropriate methods. "
@@ -1243,7 +1243,7 @@ def _tc09_eu_gold(
             ),
             "robustness": (
                 "Agent must reject size outlier (OECD-specific screen). "
-                "Agent must detect ERR-EU-005 decimal point error. "
+                "Agent must detect ERR-EU-009 decimal point error. "
                 "Agent must verify royalty direction against DEMPE. "
                 "Agent must note CD is non-EU (post-Brexit). "
                 "Agent must note CbCR not required (below threshold)."

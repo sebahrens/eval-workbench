@@ -283,7 +283,7 @@ DIST_COMPARABLES: list[tuple[str, str, str, int, int, int, Decimal, int, bool, s
 
 # ── Interest rate benchmarks ────────────────────────────────────────────────
 # EURIBOR 12M quarterly for FY2024-FY2025 + BBB credit spreads
-# ERR-EU-005: Q3 FY2025 has 0.38% instead of 3.80% (decimal point error)
+# ERR-EU-009: Q3 FY2025 has 0.38% instead of 3.80% (decimal point error)
 
 
 @dataclass(frozen=True)
@@ -346,8 +346,8 @@ def _euribor_data() -> list[EURIBOREntry]:
 
 
 # The errored value for Q3 FY2025 12M EURIBOR
-EURIBOR_ERR_EU_005_CORRECT = Decimal("3.85")
-EURIBOR_ERR_EU_005_WRONG = Decimal("0.38")  # decimal point error: 3.85 → 0.38
+EURIBOR_ERR_EU_009_CORRECT = Decimal("3.85")
+EURIBOR_ERR_EU_009_WRONG = Decimal("0.38")  # decimal point error: 3.85 → 0.38
 
 
 def _credit_spread_data() -> list[CreditSpreadEntry]:
