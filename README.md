@@ -11,6 +11,7 @@ A deterministic test suite for evaluating AI agents on Big 4 professional servic
 | [`docs/canaries-and-errors.md`](./docs/canaries-and-errors.md) | How provenance canaries and planted errors work |
 | [`docs/scoring.md`](./docs/scoring.md) | Grading methodology, rubric, and test execution protocol |
 | [`docs/adding-a-test-case.md`](./docs/adding-a-test-case.md) | How to extend the suite with new test cases |
+| [`docs/customization.md`](./docs/customization.md) | Config layering, presets, overrides, and supported v1 fields |
 | [`docs/troubleshooting.md`](./docs/troubleshooting.md) | Common failure modes and fixes |
 | [`docs/glossary.md`](./docs/glossary.md) | Big 4 terminology for engineers |
 | [`prompt.md`](./prompt.md) | Authoritative specification (the original design doc) |
@@ -37,18 +38,23 @@ Generate the default accounting-core pack (TC-01 through TC-18):
 uv run python generate_test_suite.py --output /tmp/test_suite
 ```
 
-To include additional scenario packs, pass their pack IDs programmatically through the `generate()` function:
+Generate with a customized scenario (overlay preset + CLI overrides):
 
-```python
-from generator.config import load_config
-from generate_test_suite import generate
-
-config = load_config("config.yaml")
-generate(config, Path("/tmp/test_suite"), pack_ids=["cascade_accounting_core", "cascade_legal_hr_diligence"])
-# Or use pack_ids=["all"] to enable every registered pack.
+```bash
+uv run python generate_test_suite.py \
+    --overlay presets/small-company.yaml \
+    --set seed=99 \
+    --output /tmp/test_suite
 ```
 
-> **Note:** A `--packs` CLI flag is planned but not yet implemented. For now, use the Python API to select packs beyond the default.
+See [`docs/customization.md`](./docs/customization.md) for the full customization reference.
+
+To include additional scenario packs:
+
+```bash
+uv run python generate_test_suite.py --packs cascade_accounting_core cascade_legal_hr_diligence --output /tmp/test_suite
+# Or use --packs all to generate every registered pack.
+```
 
 This produces the full suite under `/tmp/test_suite/`:
 
