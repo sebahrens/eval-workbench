@@ -235,6 +235,32 @@ test_cases:
       2: "Some explanation but missing key assumption disclosures"
       1: "No methodology explanation; no verification statements"
 
+  TC-06-EU:
+    title: "IAS 12 Income Tax Provision (European Multi-Jurisdiction Group)"
+    service_line: Tax
+    difficulty: Complex
+    capabilities: [File Reading, Data Analysis, File Writing]
+    correctness:
+      3: "Current tax computed separately per jurisdiction at correct rates (NL 25.8%, DE 29.9% composite, FR 25%, UK 25%); CIR credit applied correctly as tax credit; deferred rollforward ties; weighted ETR reconciliation from group statutory rate to effective rate; GBP→EUR translation correct"
+      2: "Most per-jurisdiction taxes correct but German composite rate incomplete or CIR treated as income adjustment; ETR reconciliation mostly ties; minor deferred rollforward discrepancy"
+      1: "Single blended rate applied to consolidated income; CIR missed entirely; ETR reconciliation missing or materially wrong; deferred rollforward doesn't balance"
+    completeness:
+      3: "All 4 sheets (Current Tax by Jurisdiction, Deferred Rollforward by Entity, Rate Reconciliation, Summary); all permanent and temporary differences by entity; Pillar Two scoping answered correctly (not applicable)"
+      2: "All sheets present but missing some entity-level detail or Pillar Two question not addressed"
+      1: "Missing sheets or major computation steps; no per-entity breakdown"
+    format_compliance:
+      3: "Valid xlsx with EUR formatting; separate named sheets; clear entity identification; opens without errors"
+      2: "Functional but inconsistent formatting or unclear entity labeling"
+      1: "Broken file or computations not traceable"
+    robustness:
+      3: "German composite rate shows three components (KSt + SolZ + GewSt); GBP→EUR at average rate per IAS 21; IAS 12 recoverability language used (not ASC 740 valuation allowance); no indefinite reversal exception applied"
+      2: "Most computations correct but used ASC 740 terminology for one concept; GBP translation present but at wrong rate"
+      1: "Applied ASC 740 valuation allowance; used single rate; missed GBP translation entirely"
+    communication:
+      3: "Flagged stale Gewerbesteuer Hebesatz (480% vs 490%); stated IAS 12 recoverability assessment; verified tie-outs; explained Pillar Two non-applicability with threshold reasoning"
+      2: "Some error detection but missed stale rate or Pillar Two reasoning incomplete"
+      1: "No error detection; no mention of IAS 12 vs ASC 740 considerations"
+
   TC-07:
     title: "K-1 Extraction & Consolidation"
     service_line: Tax
