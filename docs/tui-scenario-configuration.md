@@ -12,16 +12,30 @@ uv pip install synth-data[tui]
 
 ## Launch
 
-```bash
-# Default: load config.yaml as the base
-uv run python -m generator.tui
+There are two equivalent ways to start the TUI:
 
-# Specify a base config
-uv run python -m generator.tui --config path/to/config.yaml
+```bash
+# Via the generator subcommand
+uv run python generate_test_suite.py configure
+
+# Via the module directly
+uv run python -m generator.tui
+```
+
+Both accept the same arguments:
+
+```bash
+# Specify a base config (default: config.yaml)
+uv run python generate_test_suite.py configure --config path/to/config.yaml
 
 # Pre-apply file overlays before editing
-uv run python -m generator.tui --overlay presets/small-company.yaml presets/high-growth.yaml
+uv run python generate_test_suite.py configure --overlay presets/small-company.yaml presets/high-growth.yaml
 ```
+
+| Argument | Default | Description |
+|---|---|---|
+| `--config PATH` | `config.yaml` | Base configuration YAML file |
+| `--overlay YAML [YAML ...]` | _(none)_ | One or more overlay YAML files merged onto the base config in order |
 
 Overlays are merged left-to-right onto the base config before the TUI opens, following the same deep-merge semantics as the CLI (see [customization.md](customization.md)).
 
@@ -33,7 +47,7 @@ The TUI is organized into sequential screens. Navigation uses keyboard bindings 
 
 Edit company-level parameters: name, headquarters, industry, consolidated revenue, headcount, turnover rate, growth rates, and quarterly seasonal weights. Subsidiary fields are templated per the base config's subsidiary keys.
 
-Fields use typed inputs (text, integer, float, choice) with range validation. Modified fields are highlighted to distinguish overrides from base values.
+Fields use typed inputs (text, integer, float, choice) with range validation. Modified fields are highlighted to distinguish overrides from base values. See [customization.md — Supported v1 fields](customization.md#supported-v1-fields) for the complete field list.
 
 ### 2. Difficulty & Output Profile
 
@@ -136,6 +150,22 @@ The following are **not editable** in the TUI and will be rejected if attempted:
 - Per-test-case difficulty overrides (TC override screen is read-only in v1)
 
 These match the CLI v1 customization surface documented in [customization.md](customization.md#future-limitations).
+
+## End-to-end workflow
+
+A typical TUI session:
+
+1. **Launch** — `uv run python generate_test_suite.py configure`
+2. **Edit company profile** — change company name, revenue, subsidiaries, growth rates, seasonal weights as needed.
+3. **Set difficulty & output** — adjust error density, canary visibility, judgment trap density; optionally restrict which test cases or packs to generate.
+4. **Review test case overrides** — view TC-01 through TC-18 (read-only in v1).
+5. **Check validation** — fix any errors highlighted by the validation panel.
+6. **Preview diff** — review field-level changes and the override YAML before saving.
+7. **Save** — write the override delta to a YAML file (e.g. `my-scenario.yaml`). The base `config.yaml` is never modified.
+8. **Generate** — run the generation command from the TUI, or copy the command and run it manually:
+   ```bash
+   uv run python generate_test_suite.py --overlay my-scenario.yaml --output /tmp/test_suite
+   ```
 
 ## Keybindings
 
