@@ -3,10 +3,10 @@
 Verifies:
 - Intercompany transactions XLSX (120+ rows, correct columns, all entity pairs)
 - Comparable companies XLSX (2 sheets: Manufacturing with 15 companies, Distribution with 10)
-- Interest rate benchmarks XLSX (EURIBOR rates + credit spreads, ERR-EU-009 planted)
+- Interest rate benchmarks XLSX (EURIBOR rates + credit spreads, ERR-EU-005 planted)
 - Master file PDF (exists, has canary in metadata)
 - Local file CP PDF (exists, has canary)
-- ERR-EU-009 planted error (registered, correct type "transposed_digits", severity "material")
+- ERR-EU-005 planted error (registered, correct type "rounding_discrepancy", severity "material")
 - Canary embedding in all 5 files
 - Gold standard JSON (structure, expected outputs, scoring hints)
 - Prompt and expected behavior markdown files
@@ -98,13 +98,13 @@ class TestIntercompanyTransactions:
         assert "Transactions" in wb.sheetnames
 
     def test_transaction_count(self) -> None:
-        """Expect 120+ transaction rows; headers at row 1, data starts row 2."""
+        """Expect 80+ transaction rows; title rows 1-2, headers row 3, data from row 4."""
         _, output, _, _, _ = _ensure_emitted()
         path = output / _INPUT_DIR / "intercompany_transactions_eu_fy2025.xlsx"
         wb = openpyxl.load_workbook(str(path))
         ws = wb["Transactions"]
-        data_rows = [r for r in ws.iter_rows(min_row=2) if r[0].value is not None]
-        assert len(data_rows) >= 100, f"Expected >=100 rows, got {len(data_rows)}"
+        data_rows = [r for r in ws.iter_rows(min_row=4) if r[0].value is not None]
+        assert len(data_rows) >= 80, f"Expected >=80 rows, got {len(data_rows)}"
 
     def test_has_all_entity_pairs(self) -> None:
         """All expected intercompany flows are present."""
@@ -113,7 +113,7 @@ class TestIntercompanyTransactions:
         wb = openpyxl.load_workbook(str(path))
         ws = wb["Transactions"]
         pairs = set()
-        for row in ws.iter_rows(min_row=2, values_only=True):
+        for row in ws.iter_rows(min_row=4, values_only=True):
             if row[0] is not None:
                 from_e, to_e, tx_type = row[1], row[2], row[3]
                 pairs.add((from_e, to_e, tx_type))
@@ -368,36 +368,36 @@ class TestLocalFileCPPDF:
 
 
 # ---------------------------------------------------------------------------
-# ERR-EU-009 — EURIBOR decimal point error
+# ERR-EU-005 — EURIBOR decimal point error
 # ---------------------------------------------------------------------------
 
 
 class TestErrEU005:
-    """Verify ERR-EU-009: EURIBOR 12M Q3 FY2025 decimal point error.
+    """Verify ERR-EU-005: EURIBOR 12M Q3 FY2025 decimal point error.
 
-    Note: The error ID in the formatter is ERR-EU-009 (transposed_digits).
+    Note: The error ID in the formatter is ERR-EU-005 (rounding_discrepancy).
     """
 
     def test_error_registered(self) -> None:
         _, _, _, errors, _ = _ensure_emitted()
-        assert "ERR-EU-009" in errors.entries
+        assert "ERR-EU-005" in errors.entries
 
     def test_error_type(self) -> None:
         _, _, _, errors, _ = _ensure_emitted()
-        assert errors.entries["ERR-EU-009"].type == "transposed_digits"
+        assert errors.entries["ERR-EU-005"].type == "rounding_discrepancy"
 
     def test_error_severity(self) -> None:
         _, _, _, errors, _ = _ensure_emitted()
-        assert errors.entries["ERR-EU-009"].severity == "material"
+        assert errors.entries["ERR-EU-005"].severity == "material"
 
     def test_error_mentions_euribor(self) -> None:
         _, _, _, errors, _ = _ensure_emitted()
-        err = errors.entries["ERR-EU-009"]
+        err = errors.entries["ERR-EU-005"]
         assert "EURIBOR" in err.description or "euribor" in err.description.lower()
 
     def test_error_references_decimal_point(self) -> None:
         _, _, _, errors, _ = _ensure_emitted()
-        err = errors.entries["ERR-EU-009"]
+        err = errors.entries["ERR-EU-005"]
         assert "decimal" in err.description.lower() or "0.38" in err.description
 
 
@@ -466,7 +466,7 @@ class TestGoldStandard:
 
     def test_gold_has_error_detection(self) -> None:
         gold = self._gold()
-        assert "ERR-EU-009" in gold["error_detection"]
+        assert "ERR-EU-005" in gold["error_detection"]
 
     def test_gold_has_scoring_hints(self) -> None:
         gold = self._gold()
