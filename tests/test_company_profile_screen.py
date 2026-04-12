@@ -458,7 +458,8 @@ class TestCombinedCompanyWorkflow:
         service.set_field("company.seasonal_weights.Q4", 0.35)
 
         out = tmp_path / "override.yaml"
-        service.save(out)
+        # validate=False: this test intentionally creates weights summing to 1.05
+        service.save(out, validate=False)
 
         svc2 = DraftService(base_yaml)
         svc2.load_draft(out)
