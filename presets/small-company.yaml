@@ -1,0 +1,29 @@
+# Small-company scenario override
+#
+# Reduces Cascade Industries to a single-subsidiary operation with ~$50M
+# revenue and a lean headcount.  Useful for testing agent behavior on
+# simpler entity structures where cross-subsidiary reasoning is absent.
+#
+# Usage:
+#   uv run python generate_test_suite.py --overlay presets/small-company.yaml
+#   # or via TUI: load this file as an override layer
+
+company:
+  name: "Alpine Manufacturing, Inc."
+  consolidated_revenue: 50_000_000
+  headquarters: "Boise, Idaho"
+  industry: "Small manufacturer"
+
+  employees:
+    total_count: 120
+    annual_turnover_rate: 0.05
+
+  growth_rates:
+    fy2023_to_fy2024: 0.03
+    fy2024_to_fy2025: 0.04
+
+  seasonal_weights:
+    Q1: 0.22
+    Q2: 0.26
+    Q3: 0.26
+    Q4: 0.26

@@ -1,0 +1,26 @@
+# High-growth scenario override
+#
+# Models a rapidly growing company with aggressive YoY revenue increases
+# and higher employee turnover.  Tests whether the agent correctly handles
+# large period-over-period variances in trial balance and revenue data.
+#
+# Usage:
+#   uv run python generate_test_suite.py --overlay presets/high-growth.yaml
+
+company:
+  name: "Cascade Industries, Inc."
+  consolidated_revenue: 350_000_000
+
+  employees:
+    total_count: 1200
+    annual_turnover_rate: 0.15
+
+  growth_rates:
+    fy2023_to_fy2024: 0.18
+    fy2024_to_fy2025: 0.25
+
+  seasonal_weights:
+    Q1: 0.18
+    Q2: 0.22
+    Q3: 0.25
+    Q4: 0.35

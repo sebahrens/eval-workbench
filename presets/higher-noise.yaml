@@ -1,0 +1,13 @@
+# Higher-noise scenario override
+#
+# Increases error and judgment-trap density for a harder test suite.
+# All planted errors are included and canaries are made subtle, forcing
+# the agent to work harder to detect anomalies.
+#
+# Usage:
+#   uv run python generate_test_suite.py --overlay presets/higher-noise.yaml
+
+difficulty:
+  error_density: 1.0
+  canary_visibility: "subtle"
+  judgment_trap_density: 1.0

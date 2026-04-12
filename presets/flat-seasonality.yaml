@@ -1,0 +1,15 @@
+# Flat-seasonality scenario override
+#
+# Removes seasonal revenue skew so each quarter contributes equally.
+# Useful for testing whether the agent's variance analysis adapts when
+# there is no Q4-heavy pattern to anchor expectations against.
+#
+# Usage:
+#   uv run python generate_test_suite.py --overlay presets/flat-seasonality.yaml
+
+company:
+  seasonal_weights:
+    Q1: 0.25
+    Q2: 0.25
+    Q3: 0.25
+    Q4: 0.25

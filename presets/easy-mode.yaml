@@ -1,0 +1,12 @@
+# Easy-mode scenario override
+#
+# Reduces error density and makes canaries visible.  Good for initial
+# agent evaluation or baseline scoring before ramping up difficulty.
+#
+# Usage:
+#   uv run python generate_test_suite.py --overlay presets/easy-mode.yaml
+
+difficulty:
+  error_density: 0.3
+  canary_visibility: "visible"
+  judgment_trap_density: 0.5
