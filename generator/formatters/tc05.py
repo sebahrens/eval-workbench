@@ -32,8 +32,6 @@ from openpyxl.styles import Alignment, Font, PatternFill
 
 from generator.canaries import CanaryRegistry, embed_canary_docx, embed_canary_xlsx
 from generator.errors import ErrorRegistry, PlantedError, date_inconsistency, missing_data
-from generator.noise import apply_docx_noise, make_noise_rng
-from generator.scenario_context import ScenarioContext
 from generator.golds.framework import GoldStandard, register_gold
 from generator.manifest import Manifest
 from generator.model.ar import (
@@ -44,6 +42,8 @@ from generator.model.ar import (
     generate_ar_aging,
 )
 from generator.model.build import CascadeModel
+from generator.noise import apply_docx_noise, make_noise_rng
+from generator.scenario_context import ScenarioContext
 
 # ── Constants ────────────────────────────────────────────────────────────────
 

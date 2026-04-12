@@ -44,8 +44,6 @@ from generator.canaries import (
     embed_canary_xlsx,
 )
 from generator.errors import ErrorRegistry, PlantedError, mismatch_total, transpose_digits
-from generator.noise import ExclusionZone, apply_csv_noise, make_noise_rng
-from generator.scenario_context import ScenarioContext
 from generator.golds.framework import GoldStandard, register_gold
 from generator.manifest import Manifest
 from generator.model.bank import (
@@ -60,6 +58,8 @@ from generator.model.bank import (
     TOTAL_OUTSTANDING_CHECKS,
 )
 from generator.model.build import CascadeModel
+from generator.noise import ExclusionZone, apply_csv_noise, make_noise_rng
+from generator.scenario_context import ScenarioContext
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
