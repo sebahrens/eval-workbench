@@ -10,6 +10,7 @@ from generator.formatters.tc04_eu import emit_tc04_eu
 from generator.formatters.tc06_eu import emit_tc06_eu
 from generator.formatters.tc07_eu import emit_tc07_eu
 from generator.formatters.tc08_eu import emit_tc08_eu
+from generator.formatters.tc09_eu import emit_tc09_eu
 from generator.packs import ScenarioPack
 
 _EMITTERS = [
@@ -17,11 +18,12 @@ _EMITTERS = [
     emit_tc06_eu,
     emit_tc07_eu,
     emit_tc08_eu,
+    emit_tc09_eu,
 ]
 
 # Canary file keys — TC-04-EU: 15 lease PDFs + 1 schedule = 16; TC-06-EU: 4 files;
 # TC-07-EU: 8 allocation PDFs + 1 investment register + 1 WHT summary = 10;
-# TC-08-EU: 1 CSV + 14 DOCX + 3 XLSX + 1 XLSX = 19
+# TC-08-EU: 1 CSV + 14 DOCX + 3 XLSX + 1 XLSX = 19; TC-09-EU: 3 XLSX + 2 PDF = 5
 _CANARY_FILE_KEYS: list[str] = sorted([
     # TC-04-EU
     "tc04eu_lease_001",
@@ -76,12 +78,18 @@ _CANARY_FILE_KEYS: list[str] = sorted([
     "tc08eu_project_012",
     "tc08eu_project_013",
     "tc08eu_project_014",
+    # TC-09-EU
+    "tc09eu_comparable_companies",
+    "tc09eu_intercompany_transactions",
+    "tc09eu_interest_rate_benchmarks",
+    "tc09eu_local_file_cp_fy2024",
+    "tc09eu_master_file_fy2024",
 ])
 
 PACK = ScenarioPack(
     pack_id="cascade_europe_ifrs",
     display_name="Cascade Europe -- IFRS/OECD Variants",
-    test_cases=["TC-04-EU", "TC-06-EU", "TC-07-EU", "TC-08-EU"],
+    test_cases=["TC-04-EU", "TC-06-EU", "TC-07-EU", "TC-08-EU", "TC-09-EU"],
     canary_file_keys=_CANARY_FILE_KEYS,
     emitters=_EMITTERS,
     dependencies=["cascade_accounting_core"],
