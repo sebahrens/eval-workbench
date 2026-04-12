@@ -2,21 +2,21 @@
 
 Emits:
 - test_cases/TC-10-EU/input_files/tc10eu_intercompany_sales_fy2025.xlsx
-  Intercompany and third-party sales with VAT treatment per transaction
+  Intercompany and third-party sales with VAT treatment (~24 IC rows + summary).
 - test_cases/TC-10-EU/input_files/tc10eu_vat_registrations.xlsx
-  VAT registration details per entity (includes pending PL registration trap)
+  VAT registrations per entity (5 rows).
 - test_cases/TC-10-EU/input_files/tc10eu_vat_returns_summary_fy2025.xlsx
-  Quarterly VAT return summaries per entity
+  Quarterly VAT return summaries (16 rows: 4 entities x 4 quarters).
 - test_cases/TC-10-EU/input_files/tc10eu_eu_vat_rules_reference.docx
-  Reference document on EU VAT rules (intra-EU supply, reverse charge,
-  post-Brexit, triangulation, call-off stock, VAT PE)
+  Reference document covering EU VAT rules.
 - test_cases/TC-10-EU/prompt.md
 - test_cases/TC-10-EU/expected_behavior.md
 - gold_standards/TC-10-EU_gold.json
 
 Planted error:
-  ERR-EU-010: classification_error — CE invoiced CM for Q3 management fees
-  with 20% French VAT. CE is not FR-registered; reverse charge applies.
+  ERR-EU-010: vat_treatment_error — CE (Netherlands) invoiced CM (France)
+  for Q3 management fees with 20% French VAT. CE is not FR-registered;
+  reverse charge under Art. 196 should apply.
 
 Uses deterministic European VAT model — never hardcodes numbers that should
 come from the model.
@@ -26,11 +26,11 @@ from __future__ import annotations
 
 import datetime
 import io
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
-import docx
 import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
@@ -39,16 +39,33 @@ from generator.canaries import (
     embed_canary_docx,
     embed_canary_xlsx,
 )
-from generator.errors import ErrorRegistry, PlantedError
+from generator.errors import (
+    ErrorRegistry,
+    PlantedError,
+)
 from generator.golds.framework import GoldStandard, register_gold
 from generator.manifest import Manifest
 from generator.model.build import CascadeModel
 from generator.model.vat_eu import (
+    ALL_CANARY_KEYS_TC10EU,
+    CE_TO_CM_MGMT_FEE,
+    CE_TO_CD_MGMT_FEE,
+    CE_TO_CP_MGMT_FEE,
     CM_ITALIAN_SALES,
+    CM_TO_CP_ROYALTY,
+    CP_TO_CD_FINISHED_GOODS,
+    CP_TO_CD_Q2_TOTAL,
+    CP_TO_CD_Q2_PER_SHIPMENT,
     CP_TO_CD_Q2_UNDOCUMENTED,
+    CP_TO_CM_RAW_MATERIALS,
+    ENTITY_NAMES_VAT,
+    ENTITY_JURISDICTIONS_VAT,
     ERR_EU_010_AMOUNT,
     ERR_EU_010_QUARTER,
     ERR_EU_010_VAT_CHARGED,
+    MGMT_FEE_PCT,
+    ROYALTY_PCT,
+    VAT_IDS,
     VAT_RATES,
     generate_ic_sales_eu,
     generate_vat_registrations,
@@ -63,17 +80,50 @@ _INPUT_DIR = f"test_cases/{_TC}/input_files"
 _FIXED_DATETIME = datetime.datetime(2025, 3, 15, 9, 0, 0)
 _FIXED_ZIP_DT = (2025, 3, 15, 9, 0, 0)
 
-# Canary keys
-_KEY_IC_SALES = "tc10eu_intercompany_sales_fy2025"
-_KEY_VAT_REGS = "tc10eu_vat_registrations"
-_KEY_VAT_RETURNS = "tc10eu_vat_returns_summary_fy2025"
-_KEY_VAT_RULES = "tc10eu_eu_vat_rules_reference"
 
-# Styles
-_HEADER_FILL = PatternFill("solid", fgColor="2E5090")
-_HEADER_FONT = Font(bold=True, size=11, color="FFFFFF")
+# ── Deterministic save helpers ───────────────────────────────────────────────
+
+
+def _save_xlsx_deterministic(wb: openpyxl.Workbook, path: str | Path) -> None:
+    from openpyxl.writer.excel import ExcelWriter
+
+    path = Path(path)
+    wb.properties.created = _FIXED_DATETIME
+    wb.properties.modified = _FIXED_DATETIME
+    buf = io.BytesIO()
+    archive = ZipFile(buf, "w", ZIP_DEFLATED, allowZip64=True)
+    writer = ExcelWriter(wb, archive)
+    writer.save()
+    buf.seek(0)
+    with ZipFile(buf, "r") as src, ZipFile(str(path), "w", ZIP_DEFLATED) as dst:
+        for item in src.infolist():
+            info = ZipInfo(item.filename, date_time=_FIXED_ZIP_DT)
+            info.compress_type = item.compress_type
+            dst.writestr(info, src.read(item.filename))
+
+
+def _save_docx_deterministic(doc: Any, path: str | Path) -> None:
+    path = Path(path)
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    with ZipFile(buf, "r") as src, ZipFile(str(path), "w", ZIP_DEFLATED) as dst:
+        for item in src.infolist():
+            info = ZipInfo(item.filename, date_time=_FIXED_ZIP_DT)
+            info.compress_type = item.compress_type
+            dst.writestr(info, src.read(item.filename))
+
+
+def _whole_euros(d: Decimal) -> int:
+    return int(d.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+# ── Excel styling helpers ────────────────────────────────────────────────────
+
+_HEADER_FONT = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+_HEADER_FILL = PatternFill("solid", fgColor="2F5496")
 _HEADER_ALIGN = Alignment(horizontal="center", wrap_text=True)
-_NUM_FMT = "#,##0"
+_DATA_FONT = Font(name="Calibri", size=10)
 _THIN_BORDER = Border(
     left=Side(style="thin"),
     right=Side(style="thin"),
@@ -82,59 +132,28 @@ _THIN_BORDER = Border(
 )
 
 
-# ── Deterministic save helpers ───────────────────────────────────────────────
-
-def _save_xlsx_deterministic(wb: openpyxl.Workbook, path: str | Path) -> None:
-    """Save workbook with pinned timestamps and fixed zip entry dates."""
-    from openpyxl.writer.excel import ExcelWriter
-
-    path = Path(path)
-    wb.properties.created = _FIXED_DATETIME
-    wb.properties.modified = _FIXED_DATETIME
-
-    buf = io.BytesIO()
-    archive = ZipFile(buf, "w", ZIP_DEFLATED, allowZip64=True)
-    writer = ExcelWriter(wb, archive)
-    writer.save()
-
-    buf.seek(0)
-    with ZipFile(buf, "r") as src, ZipFile(str(path), "w", ZIP_DEFLATED) as dst:
-        for item in src.infolist():
-            info = ZipInfo(item.filename, date_time=_FIXED_ZIP_DT)
-            info.compress_type = item.compress_type
-            dst.writestr(info, src.read(item.filename))
+def _hdr_cell(ws, row, col, value, width=None):
+    cell = ws.cell(row=row, column=col, value=value)
+    cell.font = _HEADER_FONT
+    cell.fill = _HEADER_FILL
+    cell.alignment = _HEADER_ALIGN
+    cell.border = _THIN_BORDER
+    if width:
+        ws.column_dimensions[cell.column_letter].width = width
+    return cell
 
 
-def _save_docx_deterministic(document: Any, path: str | Path) -> None:
-    """Save python-docx Document with fixed zip entry timestamps."""
-    path = Path(path)
-    buf = io.BytesIO()
-    document.save(buf)
-
-    buf.seek(0)
-    with ZipFile(buf, "r") as src, ZipFile(str(path), "w", ZIP_DEFLATED) as dst:
-        for item in src.infolist():
-            info = ZipInfo(item.filename, date_time=_FIXED_ZIP_DT)
-            info.compress_type = item.compress_type
-            dst.writestr(info, src.read(item.filename))
-
-
-def _style_header(ws: Any, row: int, col_count: int) -> None:
-    for col in range(1, col_count + 1):
-        cell = ws.cell(row=row, column=col)
-        cell.font = _HEADER_FONT
-        cell.fill = _HEADER_FILL
-        cell.alignment = _HEADER_ALIGN
-        cell.border = _THIN_BORDER
-
-
-def _style_data_cell(cell: Any, fmt: str = "") -> None:
+def _data_cell(ws, row, col, value, fmt=None):
+    cell = ws.cell(row=row, column=col, value=value)
+    cell.font = _DATA_FONT
     cell.border = _THIN_BORDER
     if fmt:
         cell.number_format = fmt
+    return cell
 
 
-# ── Intercompany Sales XLSX ──────────────────────────────────────────────────
+# ── 1. Intercompany Sales XLSX ───────────────────────────────────────────────
+
 
 def _write_ic_sales_xlsx(
     output_dir: Path,
@@ -142,514 +161,556 @@ def _write_ic_sales_xlsx(
     errors: ErrorRegistry,
     manifest: Manifest,
 ) -> None:
-    """Write tc10eu_intercompany_sales_fy2025.xlsx."""
-    sales = generate_ic_sales_eu()
-
+    """Write intercompany sales with VAT treatment and third-party summary."""
+    ic_rows = generate_ic_sales_eu()
     wb = openpyxl.Workbook()
-    canary = canaries.canary_for(_KEY_IC_SALES)
-    loc = embed_canary_xlsx(wb, canary)
-
-    # ── Sheet 1: Intercompany Sales ──
     ws = wb.active
     ws.title = "Intercompany Sales"
 
+    # Title
+    ws.cell(row=1, column=1, value="Cascade Europe \u2014 Intercompany Sales FY2025")
+    ws.cell(row=1, column=1).font = Font(name="Calibri", size=14, bold=True)
+
+    # Headers at row 3
     headers = [
-        "Seller Entity", "Buyer Entity", "Description", "Amount (EUR)",
-        "VAT Treatment Applied", "Invoice VAT Rate", "Incoterms",
-        "Proof of Dispatch", "Quarter",
+        ("Seller Entity", 22),
+        ("Buyer Entity", 22),
+        ("Description", 55),
+        ("Amount (EUR)", 18),
+        ("VAT Treatment Applied", 35),
+        ("Invoice VAT Rate", 18),
+        ("Incoterms", 18),
+        ("Proof of Dispatch", 18),
     ]
-    for col, h in enumerate(headers, 1):
-        ws.cell(row=1, column=col, value=h)
-    _style_header(ws, 1, len(headers))
+    for col, (hdr, width) in enumerate(headers, 1):
+        _hdr_cell(ws, 3, col, hdr, width)
 
-    err_row = None
-    for i, sale in enumerate(sales, 2):
-        ws.cell(row=i, column=1, value=sale.seller)
-        ws.cell(row=i, column=2, value=sale.buyer)
-        ws.cell(row=i, column=3, value=sale.description)
-        ws.cell(row=i, column=4, value=float(sale.amount_eur))
-        ws.cell(row=i, column=5, value=sale.vat_treatment)
-        ws.cell(row=i, column=6, value=sale.invoice_vat_rate)
-        ws.cell(row=i, column=7, value=sale.incoterms)
-        ws.cell(row=i, column=8, value=sale.proof_of_dispatch)
-        ws.cell(row=i, column=9, value=sale.quarter)
+    # Data rows starting at row 4
+    for i, row in enumerate(ic_rows, 4):
+        _data_cell(ws, i, 1, ENTITY_NAMES_VAT.get(row.seller, row.seller))
+        _data_cell(ws, i, 2, ENTITY_NAMES_VAT.get(row.buyer, row.buyer))
+        _data_cell(ws, i, 3, row.description)
+        _data_cell(ws, i, 4, _whole_euros(row.amount_eur), "#,##0")
+        _data_cell(ws, i, 5, row.vat_treatment)
+        _data_cell(ws, i, 6, row.invoice_vat_rate)
+        _data_cell(ws, i, 7, row.incoterms)
+        _data_cell(ws, i, 8, row.proof_of_dispatch)
 
-        for col in range(1, len(headers) + 1):
-            cell = ws.cell(row=i, column=col)
-            if col == 4:
-                _style_data_cell(cell, _NUM_FMT)
-            else:
-                _style_data_cell(cell)
-
-        if sale.is_error:
-            err_row = i
-
-    # Column widths
-    widths = [12, 12, 55, 16, 42, 14, 14, 16, 8]
-    for col, w in enumerate(widths, 1):
-        ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = w
-
-    # ── Sheet 2: Third-Party Sales Summary ──
-    ws2 = wb.create_sheet("Third-Party Sales Summary")
+    # Third-Party Sales Summary section
+    tp_start = len(ic_rows) + 4 + 2  # 2 blank rows after IC data
+    ws.cell(row=tp_start, column=1, value="Third-Party Sales Summary").font = Font(
+        name="Calibri", size=12, bold=True,
+    )
     tp_headers = [
-        "Entity", "Domestic Sales (EUR)", "EU Sales (EUR)",
-        "Non-EU Sales (EUR)", "Total Third-Party (EUR)", "Notes",
+        ("Entity", 22),
+        ("Domestic Sales (EUR)", 22),
+        ("Intra-EU Sales (EUR)", 22),
+        ("Non-EU Sales (EUR)", 22),
+        ("Notes", 45),
     ]
-    for col, h in enumerate(tp_headers, 1):
-        ws2.cell(row=1, column=col, value=h)
-    _style_header(ws2, 1, len(tp_headers))
+    tp_hdr_row = tp_start + 1
+    for col, (hdr, width) in enumerate(tp_headers, 1):
+        _hdr_cell(ws, tp_hdr_row, col, hdr, width)
 
+    # Third-party data from design
     tp_data = [
-        ("CE", 500000, 0, 0, 500000, "NL domestic advisory services only"),
-        ("CP", 18000000, 5500000, 2000000, 25500000,
-         "Domestic 40%, EU 22%, Non-EU 8% of €45M revenue (rest is IC)"),
-        ("CM", 12000000, 6000000, 1600000, 19600000,
-         "Domestic 38%, EU 19% (includes €380k Italy), Non-EU 5%"),
-        ("CD", 16800000, 0, 0, 16800000,
-         "UK domestic only — CD does not export"),
+        (
+            ENTITY_NAMES_VAT["CE"], 2_500_000, 0, 0,
+            "NL domestic advisory services only",
+        ),
+        (
+            ENTITY_NAMES_VAT["CP"], 28_000_000, 6_000_000, 0,
+            "DE domestic + intra-EU (non-group) sales",
+        ),
+        (
+            ENTITY_NAMES_VAT["CM"], 20_000_000, _whole_euros(CM_ITALIAN_SALES), 0,
+            "FR domestic + Italian customers (\u20ac380k) \u2014 no IT VAT registration",
+        ),
+        (
+            ENTITY_NAMES_VAT["CD"], 21_000_000, 0, 0,
+            "UK domestic (\u00a318M \u2248 \u20ac21M)",
+        ),
     ]
-    for i, (ent, dom, eu, non_eu, total, notes) in enumerate(tp_data, 2):
-        ws2.cell(row=i, column=1, value=ent)
-        ws2.cell(row=i, column=2, value=dom)
-        ws2.cell(row=i, column=3, value=eu)
-        ws2.cell(row=i, column=4, value=non_eu)
-        ws2.cell(row=i, column=5, value=total)
-        ws2.cell(row=i, column=6, value=notes)
-        for col in range(1, len(tp_headers) + 1):
-            cell = ws2.cell(row=i, column=col)
-            if col in (2, 3, 4, 5):
-                _style_data_cell(cell, _NUM_FMT)
-            else:
-                _style_data_cell(cell)
+    for j, (entity, dom, intra, non_eu, notes) in enumerate(tp_data, tp_hdr_row + 1):
+        _data_cell(ws, j, 1, entity)
+        _data_cell(ws, j, 2, dom, "#,##0")
+        _data_cell(ws, j, 3, intra, "#,##0")
+        _data_cell(ws, j, 4, non_eu, "#,##0")
+        _data_cell(ws, j, 5, notes)
 
-    for col, w in enumerate([10, 20, 16, 16, 20, 55], 1):
-        ws2.column_dimensions[openpyxl.utils.get_column_letter(col)].width = w
+    # Canary
+    canary = canaries.canary_for("tc10eu_intercompany_sales_fy2025")
+    loc = embed_canary_xlsx(wb, canary)
+    canaries.set_location(
+        "tc10eu_intercompany_sales_fy2025",
+        f"{_INPUT_DIR}/tc10eu_intercompany_sales_fy2025.xlsx",
+        loc,
+    )
 
-    # Register planted error
+    file_path = output_dir / _INPUT_DIR / "tc10eu_intercompany_sales_fy2025.xlsx"
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    _save_xlsx_deterministic(wb, file_path)
+    manifest.register(
+        f"{_INPUT_DIR}/tc10eu_intercompany_sales_fy2025.xlsx",
+        "xlsx",
+        canary=canary,
+        test_cases=[_TC],
+    )
+
+    # Register planted error ERR-EU-010
     errors.add(PlantedError(
         error_id="ERR-EU-010",
         file=f"{_INPUT_DIR}/tc10eu_intercompany_sales_fy2025.xlsx",
-        location=(
-            f"Sheet 'Intercompany Sales', Row {err_row}: "
-            f"CE→CM management fee {ERR_EU_010_QUARTER} FY2025"
-        ),
-        type="classification_error",
+        location="Sheet 'Intercompany Sales', CE\u2192CM Q3 management fee row",
+        type="vat_treatment_error",
         description=(
-            f"CE (Netherlands) invoiced CM (France) for {ERR_EU_010_QUARTER} "
-            f"management fees (€{ERR_EU_010_AMOUNT:,}) with 20% French VAT "
-            f"(€{ERR_EU_010_VAT_CHARGED:,}). CE is not VAT-registered in "
-            "France; reverse charge under Art. 196 VAT Directive applies. "
-            "CM should self-assess French output VAT. Requires credit note."
+            "CE (Netherlands) invoiced CM (France) for Q3 management fees "
+            f"(\u20ac{_whole_euros(ERR_EU_010_AMOUNT):,}) with 20% French VAT "
+            f"(\u20ac{_whole_euros(ERR_EU_010_VAT_CHARGED):,}). CE is not registered for "
+            "VAT in France \u2014 reverse charge under Art. 196 should apply. "
+            f"CM has an invalid invoice; deduction of \u20ac{_whole_euros(ERR_EU_010_VAT_CHARGED):,} "
+            "input VAT is invalid."
         ),
         severity="material",
         which_test_cases_should_catch=["TC-10-EU"],
     ))
 
-    rel_path = f"{_INPUT_DIR}/tc10eu_intercompany_sales_fy2025.xlsx"
-    abs_path = output_dir / rel_path
-    abs_path.parent.mkdir(parents=True, exist_ok=True)
-    _save_xlsx_deterministic(wb, abs_path)
 
-    canaries.set_location(_KEY_IC_SALES, rel_path, loc)
-    manifest.register(rel_path, "xlsx")
+# ── 2. VAT Registrations XLSX ───────────────────────────────────────────────
 
-
-# ── VAT Registrations XLSX ───────────────────────────────────────────────────
 
 def _write_vat_registrations_xlsx(
     output_dir: Path,
     canaries: CanaryRegistry,
     manifest: Manifest,
 ) -> None:
-    """Write tc10eu_vat_registrations.xlsx."""
+    """Write VAT registrations per entity."""
     regs = generate_vat_registrations()
-
     wb = openpyxl.Workbook()
-    canary = canaries.canary_for(_KEY_VAT_REGS)
-    loc = embed_canary_xlsx(wb, canary)
-
     ws = wb.active
     ws.title = "VAT Registrations"
 
+    # Title
+    ws.cell(row=1, column=1, value="Cascade Europe \u2014 VAT Registrations")
+    ws.cell(row=1, column=1).font = Font(name="Calibri", size=14, bold=True)
+
+    # Headers at row 3
     headers = [
-        "Entity Code", "Country", "VAT ID", "Registration Date",
-        "VAT Group (Y/N)", "Fiscal Representative",
-        "EC Sales List Filed (Y/N)", "Intrastat Threshold Exceeded (Y/N)",
-        "Status",
+        ("Entity Code", 14),
+        ("Country", 18),
+        ("VAT ID", 22),
+        ("Registration Date", 18),
+        ("VAT Group (Y/N)", 16),
+        ("Fiscal Representative", 22),
+        ("EC Sales List Filed (Y/N)", 24),
+        ("Intrastat Threshold Exceeded (Y/N)", 30),
+        ("Status", 28),
     ]
-    for col, h in enumerate(headers, 1):
-        ws.cell(row=1, column=col, value=h)
-    _style_header(ws, 1, len(headers))
+    for col, (hdr, width) in enumerate(headers, 1):
+        _hdr_cell(ws, 3, col, hdr, width)
 
-    for i, reg in enumerate(regs, 2):
-        ws.cell(row=i, column=1, value=reg.entity_code)
-        ws.cell(row=i, column=2, value=reg.country)
-        ws.cell(row=i, column=3, value=reg.vat_id)
-        ws.cell(row=i, column=4, value=reg.registration_date)
-        ws.cell(row=i, column=5, value=reg.vat_group)
-        ws.cell(row=i, column=6, value=reg.fiscal_representative or "—")
-        ws.cell(row=i, column=7, value=reg.ecsl_filed)
-        ws.cell(row=i, column=8, value=reg.intrastat_exceeded)
-        ws.cell(row=i, column=9, value=reg.status)
+    # Data rows starting at row 4
+    for i, reg in enumerate(regs, 4):
+        _data_cell(ws, i, 1, reg.entity_code)
+        _data_cell(ws, i, 2, reg.country)
+        _data_cell(ws, i, 3, reg.vat_id)
+        _data_cell(ws, i, 4, reg.registration_date)
+        _data_cell(ws, i, 5, reg.vat_group)
+        _data_cell(ws, i, 6, reg.fiscal_representative or "\u2014")
+        _data_cell(ws, i, 7, reg.ecsl_filed)
+        _data_cell(ws, i, 8, reg.intrastat_exceeded)
+        _data_cell(ws, i, 9, reg.status)
 
-        for col in range(1, len(headers) + 1):
-            _style_data_cell(ws.cell(row=i, column=col))
+    # Canary
+    canary = canaries.canary_for("tc10eu_vat_registrations")
+    loc = embed_canary_xlsx(wb, canary)
+    canaries.set_location(
+        "tc10eu_vat_registrations",
+        f"{_INPUT_DIR}/tc10eu_vat_registrations.xlsx",
+        loc,
+    )
 
-    widths = [12, 16, 18, 16, 14, 20, 22, 30, 28]
-    for col, w in enumerate(widths, 1):
-        ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = w
-
-    rel_path = f"{_INPUT_DIR}/tc10eu_vat_registrations.xlsx"
-    abs_path = output_dir / rel_path
-    abs_path.parent.mkdir(parents=True, exist_ok=True)
-    _save_xlsx_deterministic(wb, abs_path)
-
-    canaries.set_location(_KEY_VAT_REGS, rel_path, loc)
-    manifest.register(rel_path, "xlsx")
+    file_path = output_dir / _INPUT_DIR / "tc10eu_vat_registrations.xlsx"
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    _save_xlsx_deterministic(wb, file_path)
+    manifest.register(
+        f"{_INPUT_DIR}/tc10eu_vat_registrations.xlsx",
+        "xlsx",
+        canary=canary,
+        test_cases=[_TC],
+    )
 
 
-# ── VAT Returns Summary XLSX ────────────────────────────────────────────────
+# ── 3. VAT Returns Summary XLSX ─────────────────────────────────────────────
+
 
 def _write_vat_returns_xlsx(
     output_dir: Path,
     canaries: CanaryRegistry,
     manifest: Manifest,
 ) -> None:
-    """Write tc10eu_vat_returns_summary_fy2025.xlsx."""
+    """Write quarterly VAT return summaries."""
     returns = generate_vat_returns()
-
     wb = openpyxl.Workbook()
-    canary = canaries.canary_for(_KEY_VAT_RETURNS)
-    loc = embed_canary_xlsx(wb, canary)
-
     ws = wb.active
-    ws.title = "VAT Returns Summary"
+    ws.title = "Quarterly VAT Returns"
 
+    # Title
+    ws.cell(row=1, column=1, value="Cascade Europe \u2014 Quarterly VAT Returns FY2025")
+    ws.cell(row=1, column=1).font = Font(name="Calibri", size=14, bold=True)
+
+    # Headers at row 3
     headers = [
-        "Entity", "Quarter", "Output VAT Domestic (EUR)",
-        "Output VAT Intra-EU/Export 0% (EUR)",
-        "Input VAT Domestic (EUR)", "Input VAT Reverse Charge (EUR)",
-        "VAT Payable / (Refundable) (EUR)", "Filing Status",
+        ("Entity", 18),
+        ("Quarter", 10),
+        ("Output VAT (Domestic)", 22),
+        ("Output VAT (Intra-EU/Export at 0%)", 30),
+        ("Input VAT (Domestic)", 22),
+        ("Input VAT (Reverse Charge Self-Assessed)", 35),
+        ("VAT Payable/Refundable", 22),
+        ("Filing Status", 28),
     ]
-    for col, h in enumerate(headers, 1):
-        ws.cell(row=1, column=col, value=h)
-    _style_header(ws, 1, len(headers))
+    for col, (hdr, width) in enumerate(headers, 1):
+        _hdr_cell(ws, 3, col, hdr, width)
 
-    for i, ret in enumerate(returns, 2):
-        ws.cell(row=i, column=1, value=ret.entity_code)
-        ws.cell(row=i, column=2, value=ret.quarter)
-        ws.cell(row=i, column=3, value=float(ret.output_vat_domestic))
-        ws.cell(row=i, column=4, value=float(ret.output_vat_intra_eu_export))
-        ws.cell(row=i, column=5, value=float(ret.input_vat_domestic))
-        ws.cell(row=i, column=6, value=float(ret.input_vat_reverse_charge))
-        ws.cell(row=i, column=7, value=float(ret.vat_payable))
-        ws.cell(row=i, column=8, value=ret.filing_status)
+    # Data rows starting at row 4
+    for i, ret in enumerate(returns, 4):
+        _data_cell(ws, i, 1, ENTITY_NAMES_VAT.get(ret.entity_code, ret.entity_code))
+        _data_cell(ws, i, 2, ret.quarter)
+        _data_cell(ws, i, 3, _whole_euros(ret.output_vat_domestic), "#,##0")
+        _data_cell(ws, i, 4, _whole_euros(ret.output_vat_intra_eu_export), "#,##0")
+        _data_cell(ws, i, 5, _whole_euros(ret.input_vat_domestic), "#,##0")
+        _data_cell(ws, i, 6, _whole_euros(ret.input_vat_reverse_charge), "#,##0")
+        _data_cell(ws, i, 7, _whole_euros(ret.vat_payable), "#,##0")
+        _data_cell(ws, i, 8, ret.filing_status)
 
-        for col in range(1, len(headers) + 1):
-            cell = ws.cell(row=i, column=col)
-            if col in (3, 4, 5, 6, 7):
-                _style_data_cell(cell, _NUM_FMT)
-            else:
-                _style_data_cell(cell)
+    # Canary
+    canary = canaries.canary_for("tc10eu_vat_returns_summary_fy2025")
+    loc = embed_canary_xlsx(wb, canary)
+    canaries.set_location(
+        "tc10eu_vat_returns_summary_fy2025",
+        f"{_INPUT_DIR}/tc10eu_vat_returns_summary_fy2025.xlsx",
+        loc,
+    )
 
-    widths = [10, 10, 22, 28, 22, 26, 28, 26]
-    for col, w in enumerate(widths, 1):
-        ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = w
-
-    rel_path = f"{_INPUT_DIR}/tc10eu_vat_returns_summary_fy2025.xlsx"
-    abs_path = output_dir / rel_path
-    abs_path.parent.mkdir(parents=True, exist_ok=True)
-    _save_xlsx_deterministic(wb, abs_path)
-
-    canaries.set_location(_KEY_VAT_RETURNS, rel_path, loc)
-    manifest.register(rel_path, "xlsx")
+    file_path = output_dir / _INPUT_DIR / "tc10eu_vat_returns_summary_fy2025.xlsx"
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    _save_xlsx_deterministic(wb, file_path)
+    manifest.register(
+        f"{_INPUT_DIR}/tc10eu_vat_returns_summary_fy2025.xlsx",
+        "xlsx",
+        canary=canary,
+        test_cases=[_TC],
+    )
 
 
-# ── EU VAT Rules Reference DOCX ─────────────────────────────────────────────
+# ── 4. EU VAT Rules Reference DOCX ──────────────────────────────────────────
+
 
 def _write_vat_rules_docx(
     output_dir: Path,
     canaries: CanaryRegistry,
     manifest: Manifest,
 ) -> None:
-    """Write tc10eu_eu_vat_rules_reference.docx."""
-    canary = canaries.canary_for(_KEY_VAT_RULES)
+    """Write EU VAT rules reference document."""
+    from docx import Document
 
-    doc = docx.Document()
+    doc = Document()
+
+    # Title
+    doc.add_heading(
+        "EU VAT Rules \u2014 Cross-Border Transaction Reference", level=0,
+    )
+
+    # Section 1: Intra-Community Supply of Goods
+    doc.add_heading(
+        "1. Intra-Community Supply of Goods (Article 138 VAT Directive)", level=1,
+    )
+    doc.add_paragraph(
+        "Conditions for the zero-rate (0%) on intra-Community supplies of goods:"
+    )
+    for bullet in [
+        "The acquirer must hold a valid VAT identification number issued by "
+        "another member state.",
+        "The goods must be physically transported from one member state to another.",
+        "The supplier must retain proof of dispatch or transport (e.g., CMR "
+        "waybill, bill of lading, carrier confirmation).",
+    ]:
+        doc.add_paragraph(bullet, style="List Bullet")
+    doc.add_paragraph("Documentation required:")
+    for bullet in [
+        "Commercial invoice referencing the acquirer\u2019s VAT ID and Art. 138",
+        "Transport documents (CMR waybill, bill of lading, or equivalent)",
+        "Proof of dispatch: signed CMR, carrier confirmation, or arrival certificate",
+    ]:
+        doc.add_paragraph(bullet, style="List Bullet")
+
+    # Section 2: Reverse Charge on Cross-Border Services
+    doc.add_heading(
+        "2. Reverse Charge on Cross-Border Services "
+        "(Article 196 VAT Directive)", level=1,
+    )
+    doc.add_paragraph(
+        "For B2B services, the general rule is that the place of supply is "
+        "where the customer is established (Article 44 VAT Directive). "
+        "The supplier does not charge local VAT on its invoice."
+    )
+    doc.add_paragraph(
+        "The customer self-assesses output VAT in its own member state at the "
+        "local rate, and simultaneously claims input VAT deduction (net effect "
+        "is zero if fully recoverable). The supplier\u2019s invoice must state "
+        "\u2018Reverse charge \u2014 Article 196 VAT Directive\u2019 and must not include VAT."
+    )
+
+    # Section 3: UK Post-Brexit Treatment
+    doc.add_heading("3. UK Post-Brexit Treatment", level=1)
+    doc.add_paragraph(
+        "Since 1 January 2021, the United Kingdom is treated as a third "
+        "country for EU VAT purposes. Key consequences:"
+    )
+    for bullet in [
+        "Exports from EU to UK are zero-rated (treated as exports to a non-EU "
+        "country) but require customs declarations (export/import).",
+        "Imports from UK into the EU are subject to import VAT at the member "
+        "state of importation\u2019s standard rate.",
+        "Intra-Community acquisition treatment no longer applies to UK transactions.",
+        "Postponed VAT accounting may apply in the UK for imports.",
+    ]:
+        doc.add_paragraph(bullet, style="List Bullet")
+
+    # Section 4: Triangulation Simplification
+    doc.add_heading(
+        "4. Triangulation Simplification (Article 141 VAT Directive)", level=1,
+    )
+    doc.add_paragraph(
+        "Triangulation (or ABC transaction simplification) applies when goods "
+        "move directly from party A in one member state to party C in another "
+        "member state, but the invoicing goes A \u2192 B \u2192 C with B in a third "
+        "member state."
+    )
+    doc.add_paragraph(
+        "Under the simplification, the intermediate party B can avoid VAT "
+        "registration in the country of arrival (C\u2019s member state). B issues "
+        "a zero-rated invoice to C with a reference to Article 141. Strict "
+        "conditions apply: B must hold a VAT number in a member state different "
+        "from both A\u2019s and C\u2019s member states, and the goods must be shipped "
+        "directly from A to C."
+    )
+
+    # Section 5: Call-off Stock Arrangements
+    doc.add_heading(
+        "5. Call-off Stock Arrangements (Article 17a VAT Directive)", level=1,
+    )
+    doc.add_paragraph(
+        "Under call-off stock simplification, goods may be transferred to "
+        "another member state for a known customer without triggering a deemed "
+        "intra-Community supply at the time of transport. Instead, the supply "
+        "is deemed to occur when the customer takes the goods from the stock."
+    )
+    doc.add_paragraph(
+        "Requirements: the supplier must register the goods in a call-off "
+        "stock register, and the goods must be called off within 12 months. "
+        "The customer must be identified by VAT number before the transport "
+        "begins."
+    )
+
+    # Section 6: Permanent Establishment for VAT Purposes
+    doc.add_heading(
+        "6. Permanent Establishment for VAT Purposes", level=1,
+    )
+    doc.add_paragraph(
+        "A VAT fixed establishment is not the same as a corporate tax PE "
+        "under Art. 5 OECD Model Convention."
+    )
+    doc.add_paragraph(
+        "A fixed establishment for VAT purposes requires sufficient human "
+        "and technical resources to make or receive taxable supplies "
+        "independently. The test is different from and independent of the "
+        "income tax PE test under double tax treaties."
+    )
+    doc.add_paragraph(
+        "An entity may have a VAT fixed establishment in a country without "
+        "having an income tax PE there, and vice versa. The CJEU case law "
+        "(e.g., Welmory C-605/12, Titanium C-931/19) provides further "
+        "guidance on the criteria."
+    )
+
+    # Set core properties
+    doc.core_properties.created = _FIXED_DATETIME
+    doc.core_properties.modified = _FIXED_DATETIME
+
+    # Canary
+    canary = canaries.canary_for("tc10eu_eu_vat_rules_reference")
     loc = embed_canary_docx(doc, canary)
-
-    doc.add_heading("EU VAT Rules Reference — Cascade Europe Group", level=1)
-    doc.add_paragraph(
-        "This document summarizes the key EU VAT rules applicable to the "
-        "Cascade Europe group's cross-border transactions. It is intended as "
-        "a working reference for the FY2025 VAT compliance review."
+    canaries.set_location(
+        "tc10eu_eu_vat_rules_reference",
+        f"{_INPUT_DIR}/tc10eu_eu_vat_rules_reference.docx",
+        loc,
     )
 
-    # Section 1: Intra-Community supply of goods
-    doc.add_heading("1. Intra-Community Supply of Goods (Article 138 VAT Directive)", level=2)
-    doc.add_paragraph(
-        "An intra-Community supply of goods is zero-rated (0% VAT) when the "
-        "following conditions are met:"
-    )
-    conditions = [
-        "The goods are dispatched or transported from one EU member state to another;",
-        "The supplier has the acquirer's valid VAT identification number;",
-        "The supplier has documentary proof that the goods were transported "
-        "(proof of dispatch: CMR, bill of lading, or equivalent);",
-        "The acquirer reports the intra-Community acquisition in their member state.",
-    ]
-    for c in conditions:
-        doc.add_paragraph(c, style="List Bullet")
-    doc.add_paragraph(
-        "If any condition is not met, the zero rate cannot be applied and the "
-        "supplier must charge domestic VAT. In particular, missing or incomplete "
-        "proof of dispatch means the supply may be reassessed at the domestic "
-        "rate on audit."
+    file_path = output_dir / _INPUT_DIR / "tc10eu_eu_vat_rules_reference.docx"
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    _save_docx_deterministic(doc, file_path)
+    manifest.register(
+        f"{_INPUT_DIR}/tc10eu_eu_vat_rules_reference.docx",
+        "docx",
+        canary=canary,
+        test_cases=[_TC],
     )
 
-    # Section 2: Reverse charge on cross-border services
-    doc.add_heading("2. Reverse Charge on Cross-Border Services (Article 196 VAT Directive)", level=2)
-    doc.add_paragraph(
-        "For B2B (business-to-business) cross-border services, the general rule "
-        "is that the service is taxed where the customer is established (Article "
-        "44 VAT Directive). Under the reverse charge mechanism (Article 196), "
-        "the supplier does not charge VAT; instead, the customer self-assesses "
-        "VAT in their own member state."
-    )
-    doc.add_paragraph(
-        "The reverse charge applies to management services, consultancy, "
-        "royalties, and similar B2B services supplied between entities in "
-        "different member states. The supplier issues an invoice without VAT, "
-        "noting 'Reverse charge — Article 196 VAT Directive' on the invoice."
-    )
-    doc.add_paragraph(
-        "Important: A supplier that is not established or VAT-registered in "
-        "the customer's member state should never charge the customer's local "
-        "VAT. Doing so creates an invalid invoice and compliance issues for "
-        "both parties."
-    )
 
-    # Section 3: UK post-Brexit
-    doc.add_heading("3. UK Post-Brexit Treatment", level=2)
-    doc.add_paragraph(
-        "Since 1 January 2021, the United Kingdom is a third country for EU "
-        "VAT purposes. Key implications:"
-    )
-    post_brexit = [
-        "Exports from an EU member state to the UK are zero-rated as exports "
-        "to a third country (not intra-Community supplies). Customs declarations "
-        "are required.",
-        "Imports from the UK into the EU are subject to import VAT at the "
-        "relevant member state rate. Postponed VAT accounting may be available.",
-        "Intra-Community acquisition rules no longer apply to UK transactions.",
-        "B2B services between EU and UK entities follow the general place of "
-        "supply rules. UK reverse charge applies under UK domestic legislation.",
-        "EC Sales Lists and Intrastat declarations do not apply to UK transactions.",
-    ]
-    for p in post_brexit:
-        doc.add_paragraph(p, style="List Bullet")
+# ── 5. Prompt ────────────────────────────────────────────────────────────────
 
-    # Section 4: Triangulation simplification
-    doc.add_heading("4. Triangulation Simplification (Article 141 VAT Directive)", level=2)
-    doc.add_paragraph(
-        "In a chain transaction where goods move directly from member state A "
-        "to member state C, but the invoicing chain goes A → B → C, the "
-        "intermediate party B may use the triangulation simplification to avoid "
-        "registering for VAT in member state C. Conditions: all three parties "
-        "must be registered for VAT in different member states, the goods must "
-        "move directly from A to C, and the intermediate party must note "
-        "'triangulation — Article 141' on its invoice."
-    )
-
-    # Section 5: Call-off stock
-    doc.add_heading("5. Call-Off Stock Arrangements (Article 17a VAT Directive)", level=2)
-    doc.add_paragraph(
-        "Goods transferred to another member state for a known and identified "
-        "customer may benefit from the call-off stock simplification. The "
-        "supplier does not need to register for VAT in the destination member "
-        "state, provided the goods are supplied to the identified customer "
-        "within 12 months and certain record-keeping conditions are met."
-    )
-
-    # Section 6: VAT PE
-    doc.add_heading("6. Permanent Establishment for VAT Purposes", level=2)
-    doc.add_paragraph(
-        "A fixed establishment for VAT purposes is defined differently from "
-        "a permanent establishment for direct tax (income tax) purposes. For "
-        "VAT, a fixed establishment requires 'a sufficient degree of permanence "
-        "and a suitable structure in terms of human and technical resources to "
-        "enable it to receive and use or to make supplies' (CJEU, Welmory, "
-        "C-605/12)."
-    )
-    doc.add_paragraph(
-        "IMPORTANT: A VAT fixed establishment is NOT the same as a corporate "
-        "tax PE under Art. 5 OECD Model Tax Convention. The two concepts have "
-        "different legal tests and different consequences. An entity may have "
-        "an income tax PE without a VAT fixed establishment, or vice versa. "
-        "Do not apply OECD Model Convention criteria when assessing VAT PE risk."
-    )
-    doc.add_paragraph(
-        "For the Cascade Europe group, the primary VAT PE risk arises from "
-        "CE's management service delivery: if CE personnel regularly travel to "
-        "subsidiary locations and use fixed resources there to deliver services, "
-        "CE could be found to have a fixed establishment in that member state."
-    )
-
-    rel_path = f"{_INPUT_DIR}/tc10eu_eu_vat_rules_reference.docx"
-    abs_path = output_dir / rel_path
-    abs_path.parent.mkdir(parents=True, exist_ok=True)
-    _save_docx_deterministic(doc, abs_path)
-
-    canaries.set_location(_KEY_VAT_RULES, rel_path, loc)
-    manifest.register(rel_path, "docx")
-
-
-# ── Prompt markdown ──────────────────────────────────────────────────────────
 
 def _write_prompt(output_dir: Path) -> None:
-    """Write test_cases/TC-10-EU/prompt.md."""
+    text = """\
+Analyze the VAT and cross-border tax position for the Cascade Europe
+Holdings B.V. group for FY2025. The group comprises four entities:
+
+- CE: Cascade Europe Holdings B.V. (Netherlands) \u2014 holding company
+- CP: Cascade Pr\u00e4zisionsteile GmbH (Germany) \u2014 licensed manufacturer
+- CM: Cascade Mat\u00e9riaux Avanc\u00e9s SAS (France) \u2014 R&D centre and IP developer
+- CD: Cascade Distribution Services Ltd (United Kingdom) \u2014 distributor
+
+Using the intercompany sales data, VAT registrations, quarterly VAT return
+summaries, and EU VAT rules reference provided:
+
+1. Analyze each intercompany transaction for correct VAT treatment:
+   - Intra-Community supplies of goods (Art. 138): verify zero-rating
+     conditions and proof of dispatch
+   - Cross-border services (Art. 196): verify reverse charge applied correctly
+   - UK post-Brexit: verify export/import treatment
+   - Management fees: verify VAT treatment per entity pair
+
+2. Review VAT registrations for completeness:
+   - Are all required registrations in place?
+   - Are there any pending registrations that affect compliance?
+   - Are there any missing registrations that should exist?
+
+3. Reconcile quarterly VAT returns:
+   - Cross-check output VAT and input VAT amounts against transaction data
+   - Identify any anomalies in reverse-charge self-assessment
+   - Flag any quarters with unusual filing status
+
+4. Assess VAT permanent establishment risk:
+   - Distinguish between VAT fixed establishment and income tax PE
+   - Identify any entities with potential VAT PE exposure
+
+5. Identify data gaps and quantify risks:
+   - Flag missing documentation (proof of dispatch, registrations)
+   - Quantify potential VAT exposure from documentation gaps
+   - Recommend corrective actions
+
+Export:
+- Transaction-by-transaction VAT analysis as Excel with assessment per row
+- VAT registration gap analysis as a summary table
+- Quarterly VAT reconciliation as Excel
+- Risk summary as Word document with quantified exposures
+- Recommendations for remediation
+"""
     path = output_dir / f"test_cases/{_TC}/prompt.md"
     path.parent.mkdir(parents=True, exist_ok=True)
-    text = """\
-# TC-10-EU: VAT and Cross-Border Tax Position Analysis
-
-## Context
-
-Cascade Europe Holdings B.V. is a Netherlands-based holding company with three
-operating subsidiaries: Cascade Präzisionsteile GmbH (CP, Germany — precision
-manufacturing), Cascade Matériaux Avancés SAS (CM, France — R&D and advanced
-materials), and Cascade Distribution Services Ltd (CD, UK — distribution).
-
-You are analyzing the group's VAT and cross-border indirect tax position for
-FY2025 across four jurisdictions (NL, DE, FR, UK) under EU VAT Directive rules
-and UK post-Brexit VAT legislation.
-
-## Input Files
-
-1. **tc10eu_intercompany_sales_fy2025.xlsx** — Intercompany and third-party
-   sales data with VAT treatment per transaction.
-
-2. **tc10eu_vat_registrations.xlsx** — VAT registration details per entity
-   including VAT IDs, filing status, and registration dates.
-
-3. **tc10eu_vat_returns_summary_fy2025.xlsx** — Quarterly VAT return summaries
-   showing output VAT, input VAT, reverse charge amounts, and filing status.
-
-4. **tc10eu_eu_vat_rules_reference.docx** — Reference document on EU VAT rules
-   covering intra-Community supply, reverse charge, UK post-Brexit treatment,
-   triangulation, call-off stock, and VAT PE.
-
-## Instructions
-
-Analyze the VAT and cross-border tax position for the Cascade Europe Holdings
-B.V. group for FY2025.
-
-1. For each intercompany transaction flow, determine the correct VAT treatment:
-   - Is the supply of goods or services?
-   - Where is the place of supply under EU VAT rules?
-   - Does the reverse charge mechanism apply?
-   - For goods: is zero-rating available, and are the conditions met
-     (valid VAT ID, proof of dispatch)?
-2. Review the intercompany sales data for any VAT treatment errors:
-   - Are there transactions where local VAT was incorrectly charged?
-   - Are there transactions where zero-rating was applied but conditions
-     are not fully met?
-3. Assess the group's VAT registration position:
-   - Are there jurisdictions where an entity may have an unregistered
-     VAT obligation?
-   - Flag any pending registrations and assess the risk.
-4. Review the quarterly VAT return summaries:
-   - Do the returns reconcile to the transaction data?
-   - Are there unusual positions (large refunds, pending assessments)
-     that warrant investigation?
-5. Assess permanent establishment risk:
-   - Based on the intercompany transaction flows and entity activities,
-     could any entity have created a VAT fixed establishment in another
-     jurisdiction?
-   - Note: VAT fixed establishment criteria differ from income tax PE.
-6. For the UK subsidiary (post-Brexit):
-   - Confirm the correct treatment of goods flows between EU entities
-     and the UK entity.
-   - Are customs declarations in place for CP→CD shipments?
-   - Is import VAT being accounted for correctly (postponed accounting)?
-7. Summarize the group's cross-border indirect tax risk profile:
-   - Identified errors or incorrect treatments
-   - Missing data or documentation gaps
-   - Areas requiring further investigation
-   - Recommendations for compliance improvements
-
-## Export
-
-Export as an Excel workbook with sheets for:
-- Transaction-by-Transaction VAT Analysis
-- VAT Registration Assessment
-- Quarterly VAT Reconciliation
-- PE Risk Assessment
-- Risk Summary and Recommendations
-"""
     path.write_text(text)
 
 
-# ── Expected behavior markdown ───────────────────────────────────────────────
+# ── 6. Expected Behavior ────────────────────────────────────────────────────
+
 
 def _write_expected_behavior(output_dir: Path) -> None:
-    """Write test_cases/TC-10-EU/expected_behavior.md."""
+    q2_undoc = _whole_euros(CP_TO_CD_Q2_UNDOCUMENTED)
+    q2_vat_risk = _whole_euros(CP_TO_CD_Q2_UNDOCUMENTED * VAT_RATES["DE"])
+    err_amount = _whole_euros(ERR_EU_010_AMOUNT)
+    err_vat = _whole_euros(ERR_EU_010_VAT_CHARGED)
+    italian_sales = _whole_euros(CM_ITALIAN_SALES)
+
+    text = f"""\
+# TC-10-EU: VAT and Cross-Border Tax Position \u2014 Expected Behavior
+
+## Key Findings the Agent Should Produce
+
+1. **Transaction-by-transaction VAT analysis**: Each intercompany transaction
+   must be assessed for correct VAT treatment against the EU VAT rules
+   reference. The analysis must cover:
+   - Goods flows (CP\u2192CM, CP\u2192CD): zero-rating conditions, proof of dispatch
+   - Services (CE management fees, CM\u2192CP royalty): reverse charge under Art. 196
+   - UK transactions: post-Brexit third-country treatment
+
+2. **ERR-EU-010 detection**: CE (Netherlands) invoiced CM (France) for Q3
+   management fees (\u20ac{err_amount:,}) with 20% French VAT (\u20ac{err_vat:,}) charged
+   on the invoice. CE is not registered for VAT in France \u2014 reverse charge
+   under Art. 196 should apply. The \u20ac{err_vat:,} VAT charged is incorrect;
+   CM cannot validly deduct this amount as input VAT.
+
+3. **Missing data identification** (3 gaps):
+   - **Q2 proof of dispatch**: CP\u2192CD Q2 finished goods shipments show "Partial"
+     proof of dispatch \u2014 2 of 5 shipments (~\u20ac{q2_undoc:,}) lack
+     documentation. Zero-rating is at risk without proof.
+   - **Polish VAT registration**: CP has a pending Polish VAT registration
+     (applied 2025-03-15). If CP makes supplies in Poland before registration
+     completes, compliance risk arises.
+   - **Italian sales without registration**: CM (France) has \u20ac{italian_sales:,}
+     in sales to Italian customers but holds no Italian VAT registration. If
+     these are supplies of goods with installation or local supplies, an
+     Italian registration may be required.
+
+4. **VAT PE vs income tax PE distinction**: The EU VAT rules reference notes
+   that a VAT fixed establishment is not the same as an income tax PE under
+   Art. 5 OECD Model Convention. Agent must demonstrate awareness of this
+   distinction when assessing PE risk.
+
+5. **UK post-Brexit treatment**: CD (UK) transactions must be treated as
+   exports to/imports from a third country. No intra-Community acquisition
+   treatment. Customs declarations required.
+
+6. **CE Q4 pending assessment flag**: CE\u2019s Q4 VAT return shows "Filed \u2014
+   Pending Assessment" (all other quarters show "Filed \u2014 Assessed"). Agent
+   should flag this anomaly.
+
+7. **Quantified risk**: The Q2 documentation gap for CP\u2192CD shipments puts
+   ~\u20ac{q2_undoc:,} of zero-rated supplies at risk. If DE tax
+   authorities deny zero-rating, 19% VAT = ~\u20ac{q2_vat_risk:,} exposure.
+
+## Data Challenges
+
+- **ERR-EU-010**: The error is subtle \u2014 it looks like a normal invoice line
+  but violates Art. 196 reverse charge. Agents that do not cross-reference
+  the VAT rules reference will miss it.
+- **Three missing data traps**: Q2 dispatch docs, Polish registration,
+  Italian sales \u2014 each requires different analysis.
+- **VAT PE vs tax PE**: A conceptual distinction that many models conflate.
+- **CE Q4 anomaly**: A filing status change that could indicate a VAT audit.
+- **Multiple VAT regimes**: NL, DE, FR, UK \u2014 each with different rates
+  and procedures.
+- **No factor-based allocation**: VAT is a transaction tax. Apportioning
+  income across jurisdictions (as in income tax) is the wrong methodology.
+
+## Expected Output Structure
+
+### Transaction Analysis (Excel):
+- One row per IC transaction with VAT treatment assessment
+- Flag column for errors/issues found
+- Corrected treatment column where applicable
+
+### VAT Registration Gap Analysis:
+- Current registrations vs. required registrations
+- Risk assessment for each gap
+
+### Quarterly Reconciliation (Excel):
+- Reconciliation of VAT returns against transaction data
+- Anomaly flags (CE Q4 pending assessment)
+
+### Risk Summary (Word):
+- Quantified exposures (ERR-EU-010: \u20ac{err_vat:,}, Q2 dispatch: ~\u20ac{q2_vat_risk:,})
+- Priority ranking of remediation actions
+- Timeline recommendations
+"""
     path = output_dir / f"test_cases/{_TC}/expected_behavior.md"
     path.parent.mkdir(parents=True, exist_ok=True)
-
-    vat_exposure = float(CP_TO_CD_Q2_UNDOCUMENTED * VAT_RATES["DE"])
-    text = f"""\
-# TC-10-EU: Expected Behavior
-
-## Key Expectations
-
-### Transaction-by-Transaction VAT Classification
-- Agent must analyze each intercompany flow individually.
-- Applying a single rule to all transactions or factor-based allocation is wrong.
-
-### Reverse Charge Mechanism
-- CE→CP management fees: Reverse charge (Art. 196)
-- CE→CM management fees: Reverse charge (Art. 196) — except ERR-EU-010
-- CE→CD management fees: Outside EU VAT scope (UK reverse charge)
-- CM→CP R&D royalty: Reverse charge (Art. 196)
-
-### Intra-EU Supply Conditions
-- CP→CM raw materials: 0% with proof of dispatch — conditions met
-- CP→CD finished goods: Export to third country — Q2 has partial proof of
-  dispatch (2/5 shipments missing). Potential €{vat_exposure:,.0f} VAT exposure.
-
-### UK Post-Brexit Treatment
-- UK is a third country. CP→CD shipments are exports, not intra-Community.
-- CD uses postponed accounting for import VAT.
-
-### ERR-EU-010 Detection
-- CE charged 20% French VAT on Q3 management fees to CM.
-- CE is NL-established, not FR-registered — reverse charge applies.
-- Requires credit note.
-
-### Missing Data Identification (at least 3)
-1. Q2 proof of dispatch gap for CP→CD shipments
-2. Unexplained Polish VAT registration for CP
-3. CM's €380k Italian sales without Italian VAT registration
-
-### VAT PE vs Income Tax PE
-- Different legal tests — do not conflate.
-- Agent should not use OECD Art. 5 or Pillar Two thresholds for VAT PE.
-
-### CE Q4 Pending Assessment
-- Unusual for a holding company — flag for monitoring.
-
-### No Factor-Based Allocation
-- VAT is a transaction tax. Apportioning income across jurisdictions is wrong.
-
-## Error Detection
-- ERR-EU-010: CE incorrectly charged 20% French VAT on management fees to CM
-  instead of applying reverse charge under Art. 196 VAT Directive.
-"""
     path.write_text(text)
 
 
-# ── Gold standard ────────────────────────────────────────────────────────────
+# ── 7. Gold Standard ────────────────────────────────────────────────────────
+
 
 @register_gold(_TC)
 def _tc10_eu_gold(
@@ -657,130 +718,300 @@ def _tc10_eu_gold(
     errors: ErrorRegistry,
     **model_kwargs: Any,
 ) -> GoldStandard:
-    """TC-10-EU gold standard: VAT and cross-border tax analysis."""
-    vat_exposure = float(CP_TO_CD_Q2_UNDOCUMENTED * VAT_RATES["DE"])
-
-    expected_outputs: dict[str, Any] = {
-        "output_files": {
-            "vat_analysis_workbook": {
-                "type": "xlsx",
-                "required_sheets": [
-                    "Transaction-by-Transaction VAT Analysis",
-                    "VAT Registration Assessment",
-                    "Quarterly VAT Reconciliation",
-                    "PE Risk Assessment",
-                    "Risk Summary and Recommendations",
-                ],
-            },
-        },
-        "transaction_vat_analysis": {
-            "cp_to_cm_raw_materials": {
-                "treatment": "Intra-EU supply of goods, 0% (Art. 138)",
-                "conditions_met": True,
-            },
-            "cp_to_cd_finished_goods": {
-                "treatment": "Export to third country (post-Brexit), 0%",
-                "q2_proof_of_dispatch": "Partial (2/5 missing)",
-                "vat_exposure_eur": vat_exposure,
-            },
-            "ce_to_cp_mgmt_fee": {
-                "treatment": "Reverse charge (Art. 196, B2B services)",
-                "correct": True,
-            },
-            "ce_to_cm_mgmt_fee": {
-                "treatment": "Should be reverse charge (Art. 196)",
-                "error": "ERR-EU-010: CE charged 20% French VAT",
-                "requires_credit_note": True,
-            },
-            "ce_to_cd_mgmt_fee": {
-                "treatment": "Outside EU VAT scope (UK reverse charge)",
-                "correct": True,
-            },
-            "cm_to_cp_royalty": {
-                "treatment": "Reverse charge (Art. 196, B2B services)",
-                "correct": True,
-            },
-        },
-        "registration_assessment": {
-            "ce_nl": "Compliant",
-            "cp_de": "Compliant \u2014 but pending PL registration unexplained",
-            "cm_fr": "Potential issue \u2014 IT sales without IT registration",
-            "cd_uk": "Compliant \u2014 UK VAT, postponed accounting",
-        },
-        "missing_data_gaps": [
-            "Q2 proof of dispatch for CP\u2192CD (2/5 shipments)",
-            "Polish VAT registration for CP \u2014 no transactions to Poland",
-            "CM Italian sales (\u20ac380k) without Italian VAT registration",
-        ],
-        "pe_risk": {
-            "cp_in_fr": "Low \u2014 goods shipped, not installed",
-            "cm_in_de": "Low \u2014 IP licensed, no personnel in DE",
-            "ce_in_subs": "Medium \u2014 depends on travel patterns (data gap)",
-            "cd_in_eu": "Low \u2014 UK-only operations",
-        },
-        "quantified_risks": {
-            "q2_dispatch_exposure_eur": vat_exposure,
-            "err_eu_010_vat_amount_eur": float(ERR_EU_010_VAT_CHARGED),
-            "cm_italian_sales_eur": float(CM_ITALIAN_SALES),
-        },
-    }
-
-    canary_verification = {
-        "read_ic_sales": canaries.canary_for(_KEY_IC_SALES),
-        "read_vat_registrations": canaries.canary_for(_KEY_VAT_REGS),
-        "read_vat_returns": canaries.canary_for(_KEY_VAT_RETURNS),
-        "read_vat_rules": canaries.canary_for(_KEY_VAT_RULES),
-    }
-
-    scoring_hints = {
-        "correctness": (
-            "Transaction-by-transaction VAT analysis required. "
-            "Reverse charge must be identified for B2B services. "
-            "ERR-EU-010 must be detected (CE charged FR VAT on management fees). "
-            f"Q2 proof of dispatch gap must be flagged with ~\u20ac{vat_exposure:,.0f} exposure."
-        ),
-        "completeness": (
-            "All 6 IC transaction flows analyzed. 3+ missing data gaps flagged. "
-            "VAT registration assessment for all entities. PE risk assessment. "
-            "UK post-Brexit treatment confirmed."
-        ),
-        "eu_vat_framework": (
-            "Art. 138 (intra-EU supply conditions), Art. 196 (reverse charge), "
-            "UK as third country post-Brexit, VAT PE \u2260 income tax PE. "
-            "No factor-based apportionment (US TC-10 methodology is wrong here)."
-        ),
-        "adversarial_elements": (
-            "1. ERR-EU-010: CE\u2192CM management fee with incorrect FR VAT. "
-            "2. Q2 proof of dispatch partial \u2014 quantify exposure. "
-            "3. Polish registration without transactions \u2014 flag gap. "
-            "4. CM Italian sales without registration \u2014 assess B2B/B2C. "
-            "5. VAT PE vs income tax PE \u2014 do not conflate. "
-            "6. CE Q4 pending assessment \u2014 flag as unusual."
-        ),
-        "communication": (
-            "EU VAT terminology (reverse charge, intra-Community, Art. 196). "
-            "Risk quantification (not just 'there is a gap'). "
-            "Actionable recommendations (credit note, documentation, registration)."
-        ),
-    }
+    """TC-10-EU gold standard: VAT and cross-border tax position analysis."""
+    q2_vat_exposure = _whole_euros(CP_TO_CD_Q2_UNDOCUMENTED * VAT_RATES["DE"])
 
     return GoldStandard(
         test_case=_TC,
-        expected_outputs=expected_outputs,
-        canary_verification=canary_verification,
+        expected_outputs={
+            "output_files": {
+                "vat_analysis_workbook": {
+                    "type": "xlsx",
+                    "required_sheets": [
+                        "Transaction-by-Transaction VAT Analysis",
+                        "VAT Registration Assessment",
+                        "Quarterly VAT Reconciliation",
+                        "PE Risk Assessment",
+                        "Risk Summary and Recommendations",
+                    ],
+                },
+            },
+            "transaction_analysis": {
+                "ic_transaction_count": len(generate_ic_sales_eu()),
+                "flows_analyzed": [
+                    {
+                        "flow": "CP\u2192CM raw materials",
+                        "vat_treatment": "Zero-rated intra-EU supply (Art. 138)",
+                        "conditions": [
+                            "Valid VAT ID of acquirer (CM: FR12345678901)",
+                            "Goods physically transported DE\u2192FR",
+                            "Proof of dispatch on file",
+                        ],
+                        "annual_amount_eur": _whole_euros(CP_TO_CM_RAW_MATERIALS),
+                        "status": "Compliant",
+                    },
+                    {
+                        "flow": "CP\u2192CD finished goods",
+                        "vat_treatment": "Zero-rated export to third country (post-Brexit)",
+                        "conditions": [
+                            "Customs export declaration",
+                            "Proof of dispatch/transport",
+                        ],
+                        "annual_amount_eur": _whole_euros(CP_TO_CD_FINISHED_GOODS),
+                        "status": "Partial compliance \u2014 Q2 documentation gap",
+                        "q2_issue": {
+                            "total_q2_eur": _whole_euros(CP_TO_CD_Q2_TOTAL),
+                            "undocumented_eur": _whole_euros(CP_TO_CD_Q2_UNDOCUMENTED),
+                            "shipments_missing_docs": 2,
+                            "shipments_total": 5,
+                            "vat_exposure_eur": q2_vat_exposure,
+                        },
+                    },
+                    {
+                        "flow": "CE\u2192CP management fees",
+                        "vat_treatment": "Reverse charge (Art. 196, B2B services)",
+                        "annual_amount_eur": _whole_euros(CE_TO_CP_MGMT_FEE),
+                        "status": "Compliant",
+                    },
+                    {
+                        "flow": "CE\u2192CM management fees",
+                        "vat_treatment": "Should be reverse charge (Art. 196)",
+                        "annual_amount_eur": _whole_euros(CE_TO_CM_MGMT_FEE),
+                        "status": "ERR-EU-010 in Q3",
+                        "error": {
+                            "quarter": ERR_EU_010_QUARTER,
+                            "amount_eur": _whole_euros(ERR_EU_010_AMOUNT),
+                            "vat_incorrectly_charged_eur": _whole_euros(
+                                ERR_EU_010_VAT_CHARGED,
+                            ),
+                            "issue": (
+                                "CE charged 20% French VAT \u2014 CE is not registered "
+                                "in FR; reverse charge under Art. 196 should apply"
+                            ),
+                            "impact": (
+                                f"CM cannot validly deduct \u20ac{_whole_euros(ERR_EU_010_VAT_CHARGED):,} "
+                                "input VAT \u2014 invalid invoice"
+                            ),
+                        },
+                    },
+                    {
+                        "flow": "CE\u2192CD management fees",
+                        "vat_treatment": "Outside scope of EU VAT (UK reverse charge)",
+                        "annual_amount_eur": _whole_euros(CE_TO_CD_MGMT_FEE),
+                        "status": "Compliant",
+                    },
+                    {
+                        "flow": "CM\u2192CP R&D royalty",
+                        "vat_treatment": "Reverse charge (Art. 196, B2B services)",
+                        "annual_amount_eur": _whole_euros(CM_TO_CP_ROYALTY),
+                        "status": "Compliant",
+                    },
+                ],
+            },
+            "vat_registrations": {
+                "current_registrations": [
+                    {"entity": "CE", "country": "NL", "vat_id": VAT_IDS["CE"], "status": "Active"},
+                    {"entity": "CP", "country": "DE", "vat_id": VAT_IDS["CP"], "status": "Active"},
+                    {"entity": "CP", "country": "PL", "vat_id": "PL9876543210", "status": "Pending"},
+                    {"entity": "CM", "country": "FR", "vat_id": VAT_IDS["CM"], "status": "Active"},
+                    {"entity": "CD", "country": "UK", "vat_id": VAT_IDS["CD"], "status": "Active"},
+                ],
+                "gaps_identified": [
+                    {
+                        "entity": "CM",
+                        "missing_country": "Italy",
+                        "reason": (
+                            f"CM has \u20ac{_whole_euros(CM_ITALIAN_SALES):,} in sales to Italian "
+                            "customers \u2014 may require IT VAT registration depending on "
+                            "the nature of supplies (goods with installation, local supplies)"
+                        ),
+                    },
+                    {
+                        "entity": "CP",
+                        "pending_country": "Poland",
+                        "reason": (
+                            "CP has a pending Polish VAT registration (applied 2025-03-15). "
+                            "Any supplies in PL before completion create compliance risk."
+                        ),
+                    },
+                ],
+            },
+            "pe_risk_assessment": {
+                "vat_pe_vs_income_tax_pe": (
+                    "A VAT fixed establishment requires sufficient human and technical "
+                    "resources to make or receive supplies independently. This test is "
+                    "different from and independent of the income tax PE test under "
+                    "Art. 5 OECD Model Convention."
+                ),
+                "entities_assessed": {
+                    "cp_in_fr": "Low \u2014 goods shipped, not installed",
+                    "cm_in_de": "Low \u2014 IP licensed, no personnel in DE",
+                    "ce_in_subs": "Medium \u2014 depends on travel patterns (data gap)",
+                    "cd_in_eu": "Low \u2014 UK-only operations",
+                },
+            },
+            "quarterly_reconciliation": {
+                "entities": ["CE", "CP", "CM", "CD"],
+                "quarters": ["Q1", "Q2", "Q3", "Q4"],
+                "anomalies": [
+                    {
+                        "entity": "CE",
+                        "quarter": "Q4",
+                        "issue": (
+                            "Filing status is 'Filed \u2014 Pending Assessment' "
+                            "(all other quarters show 'Filed \u2014 Assessed')"
+                        ),
+                        "implication": (
+                            "May indicate a VAT audit or query from "
+                            "Dutch tax authorities"
+                        ),
+                    },
+                ],
+            },
+            "risk_summary": {
+                "total_identified_risks": 4,
+                "risks": [
+                    {
+                        "risk_id": "ERR-EU-010",
+                        "category": "Incorrect VAT treatment",
+                        "exposure_eur": _whole_euros(ERR_EU_010_VAT_CHARGED),
+                        "severity": "Material",
+                        "description": (
+                            "CE charged French VAT on CE\u2192CM Q3 management fees; "
+                            "reverse charge should apply"
+                        ),
+                    },
+                    {
+                        "risk_id": "Q2-DISPATCH-GAP",
+                        "category": "Documentation gap",
+                        "exposure_eur": q2_vat_exposure,
+                        "severity": "Material",
+                        "description": (
+                            f"2 of 5 CP\u2192CD Q2 shipments (\u20ac{_whole_euros(CP_TO_CD_Q2_UNDOCUMENTED):,}) "
+                            "lack proof of dispatch \u2014 zero-rating at risk"
+                        ),
+                    },
+                    {
+                        "risk_id": "CM-IT-REGISTRATION",
+                        "category": "Missing VAT registration",
+                        "exposure_eur": _whole_euros(CM_ITALIAN_SALES),
+                        "severity": "Moderate",
+                        "description": (
+                            f"CM has \u20ac{_whole_euros(CM_ITALIAN_SALES):,} Italian sales "
+                            "without Italian VAT registration"
+                        ),
+                    },
+                    {
+                        "risk_id": "CE-Q4-PENDING",
+                        "category": "Filing anomaly",
+                        "exposure_eur": 0,
+                        "severity": "Low \u2014 monitoring",
+                        "description": (
+                            "CE Q4 return pending assessment \u2014 "
+                            "possible audit trigger"
+                        ),
+                    },
+                ],
+            },
+        },
+        canary_verification={
+            "read_ic_sales": canaries.canary_for("tc10eu_intercompany_sales_fy2025"),
+            "read_vat_registrations": canaries.canary_for("tc10eu_vat_registrations"),
+            "read_vat_returns": canaries.canary_for("tc10eu_vat_returns_summary_fy2025"),
+            "read_vat_rules_reference": canaries.canary_for("tc10eu_eu_vat_rules_reference"),
+        },
         error_detection={
             "ERR-EU-010": (
-                f"CE (Netherlands) invoiced CM (France) for {ERR_EU_010_QUARTER} "
-                "management fees with 20% French VAT. CE is not VAT-registered "
-                "in France; reverse charge under Art. 196 applies. Requires "
-                "credit note."
+                "CE (Netherlands) invoiced CM (France) for Q3 management fees "
+                f"(\u20ac{_whole_euros(ERR_EU_010_AMOUNT):,}) with 20% French VAT "
+                f"(\u20ac{_whole_euros(ERR_EU_010_VAT_CHARGED):,}). CE is not registered for "
+                "VAT in France \u2014 reverse charge under Art. 196 should apply. "
+                "CM\u2019s input VAT deduction is invalid."
             ),
         },
-        scoring_hints=scoring_hints,
+        scoring_hints={
+            "correctness": (
+                "Each IC transaction must be assessed against correct VAT treatment. "
+                "ERR-EU-010 must be identified \u2014 CE cannot charge French VAT without "
+                f"FR registration. Q2 dispatch gap quantified at ~\u20ac{q2_vat_exposure:,} risk. "
+                "UK transactions correctly treated as third-country exports."
+            ),
+            "completeness": (
+                "All 6 IC flows analyzed with correct VAT articles cited. "
+                "3 missing data gaps identified (Q2 dispatch, PL registration, IT sales). "
+                "VAT PE vs income tax PE distinction addressed. "
+                "CE Q4 filing anomaly flagged. "
+                "Third-party sales reviewed for registration requirements."
+            ),
+            "format_compliance": (
+                "Transaction analysis as Excel with per-row assessment. "
+                "Registration gap analysis as summary table. "
+                "Quarterly reconciliation as Excel. "
+                "Risk summary as Word with quantified exposures."
+            ),
+            "robustness": (
+                "Agent must detect ERR-EU-010 by cross-referencing Art. 196 rules. "
+                "Agent must distinguish VAT PE from income tax PE. "
+                "Agent must quantify Q2 documentation risk. "
+                "Agent must flag CE Q4 pending assessment. "
+                "Agent must identify CM Italian sales registration gap."
+            ),
+            "communication": (
+                "Clear per-transaction VAT assessment with article citations. "
+                "Professional EU VAT terminology (intra-Community supply, reverse charge). "
+                "Actionable remediation recommendations with priority ranking."
+            ),
+        },
+        scenario_pack="cascade_europe_ifrs",
+        judgment_traps=[
+            {
+                "trap": "ERR-EU-010 \u2014 VAT treatment error",
+                "description": (
+                    "CE charges 20% French VAT on CE\u2192CM Q3 management fees. "
+                    "CE is not registered in France; reverse charge under Art. 196 "
+                    "should apply. An agent that does not cross-reference the VAT "
+                    "rules reference or check CE\u2019s registration status will miss this."
+                ),
+            },
+            {
+                "trap": "Q2 proof of dispatch gap",
+                "description": (
+                    "CP\u2192CD Q2 finished goods show \u2018Partial\u2019 proof of dispatch. "
+                    "2 of 5 shipments lack documentation. Without proof, German tax "
+                    "authorities can deny zero-rating and assess 19% VAT."
+                ),
+            },
+            {
+                "trap": "CM Italian sales without IT registration",
+                "description": (
+                    f"CM has \u20ac{_whole_euros(CM_ITALIAN_SALES):,} in sales to Italian "
+                    "customers but no Italian VAT registration. Agent must assess "
+                    "whether an IT registration is required based on the nature of "
+                    "the supplies."
+                ),
+            },
+            {
+                "trap": "VAT PE vs income tax PE conflation",
+                "description": (
+                    "The VAT rules reference explicitly states these are different "
+                    "tests. An agent that treats them as equivalent fails to "
+                    "demonstrate proper EU VAT knowledge."
+                ),
+            },
+            {
+                "trap": "CE Q4 pending assessment anomaly",
+                "description": (
+                    "All CE returns except Q4 show \u2018Filed \u2014 Assessed\u2019. The Q4 "
+                    "\u2018Pending Assessment\u2019 status may indicate a VAT audit or query. "
+                    "An agent that ignores filing status misses a compliance signal."
+                ),
+            },
+        ],
     )
 
 
 # ── Public entry point ───────────────────────────────────────────────────────
+
 
 def emit_tc10_eu(
     model: CascadeModel,
@@ -790,7 +1021,7 @@ def emit_tc10_eu(
     manifest: Manifest,
     **kwargs: object,
 ) -> None:
-    """Write all TC-10-EU files to *output_dir*."""
+    """Emit all TC-10-EU files."""
     _write_ic_sales_xlsx(output_dir, canaries, errors, manifest)
     _write_vat_registrations_xlsx(output_dir, canaries, manifest)
     _write_vat_returns_xlsx(output_dir, canaries, manifest)
