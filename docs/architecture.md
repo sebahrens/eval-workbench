@@ -122,6 +122,7 @@ Test cases are organized into **scenario packs** — self-contained bundles regi
 | Pack | Module | Test Cases | Depends On |
 |---|---|---|---|
 | `cascade_accounting_core` | `generator/packs/accounting_core.py` | TC-01 – TC-18 | — |
+| `cascade_europe_ifrs` | `generator/packs/cascade_europe_ifrs.py` | TC-04-EU – TC-18-EU (9 cases) | `cascade_accounting_core` |
 | `cascade_legal_hr_diligence` | `generator/packs/legal_hr_diligence.py` | TC-19 – TC-21 | `cascade_accounting_core` |
 
 Packs are statically registered at import time. The orchestrator resolves selected packs, validates dependencies, and runs emitters in topological order.
