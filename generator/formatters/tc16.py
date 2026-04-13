@@ -363,16 +363,20 @@ def _write_fee_schedule(
         row = notes_start + 1 + i
         ws.cell(row=row, column=1, value=factor).font = _DATA_FONT
         ws.cell(row=row, column=2, value=mult_val).font = _BOLD_FONT
-        ws.cell(row=row, column=3, value=desc).font = _DATA_FONT
+        c_desc = ws.cell(row=row, column=3, value=desc)
+        c_desc.font = _DATA_FONT
+        c_desc.alignment = Alignment(wrap_text=True)
 
     # -- Per-Entity Adder notes
     adder_start = notes_start + len(notes) + 2
     ws.cell(row=adder_start, column=1, value="Per-Entity Adder Notes:").font = _BOLD_FONT
-    ws.cell(row=adder_start + 1, column=1, value=(
+    c_adder_note = ws.cell(row=adder_start + 1, column=1, value=(
         "The per-entity adder applies to each entity beyond the first. "
         "For a group with 4 entities (1 parent + 3 subsidiaries), "
         "the adder is applied 3 times."
-    )).font = _DATA_FONT
+    ))
+    c_adder_note.font = _DATA_FONT
+    c_adder_note.alignment = Alignment(wrap_text=True)
 
     # -- Cascade Industries fee summary (pre-computed for convenience)
     # ERR-013: The audit total omits the IPO complexity multiplier (1.15x).
@@ -445,12 +449,18 @@ def _write_fee_schedule(
     ))
 
     # -- Column widths
-    ws.column_dimensions["A"].width = 28
+    ws.column_dimensions["A"].width = 30
     ws.column_dimensions["B"].width = 18
-    ws.column_dimensions["C"].width = 18
+    ws.column_dimensions["C"].width = 22
     ws.column_dimensions["D"].width = 15
     ws.column_dimensions["E"].width = 18
     ws.column_dimensions["F"].width = 22
+
+    # -- Page setup for PDF rendering
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
 
     # -- Save
     path = output_dir / _INPUT_DIR / "fee_schedule.xlsx"
