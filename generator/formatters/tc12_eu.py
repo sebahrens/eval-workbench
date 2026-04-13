@@ -1126,6 +1126,15 @@ def _write_management_accounts_xlsx(
         ws.cell(row=1, column=c, value=h)
     _style_header_row(ws, 1, len(headers))
 
+    # Column widths — prevent ### overflow in PDF rendering
+    ws.column_dimensions["A"].width = 16  # Entity
+    ws.column_dimensions["B"].width = 18  # Revenue YTD
+    ws.column_dimensions["C"].width = 16  # COGS YTD
+    ws.column_dimensions["D"].width = 16  # GP YTD
+    ws.column_dimensions["E"].width = 16  # OpEx YTD
+    ws.column_dimensions["F"].width = 16  # EBIT YTD
+    ws.column_dimensions["G"].width = 14  # Budget Var
+
     rows = [
         ("CE", 2800000, 0, 2800000, 2100000, 700000, -2.1),
         ("CP", 11250000, 7875000, 3375000, 2100000, 1275000, 3.5),
@@ -1172,6 +1181,12 @@ def _write_budget_xlsx(
         ws.cell(row=1, column=c, value=h)
     _style_header_row(ws, 1, len(headers))
 
+    # Column widths — prevent ### overflow in PDF rendering
+    ws.column_dimensions["A"].width = 16  # Entity
+    ws.column_dimensions["B"].width = 20  # FY2024 Actual
+    ws.column_dimensions["C"].width = 20  # FY2025 Budget
+    ws.column_dimensions["D"].width = 12  # Growth
+
     rows = [
         ("CE", 11500000, 12200000, 6.1),
         ("CP", 45000000, 48600000, 8.0),
@@ -1212,6 +1227,16 @@ def _write_debt_schedule_xlsx(
     for c, h in enumerate(headers, 1):
         ws.cell(row=1, column=c, value=h)
     _style_header_row(ws, 1, len(headers))
+
+    # Column widths — prevent ### overflow in PDF rendering
+    ws.column_dimensions["A"].width = 26  # Facility
+    ws.column_dimensions["B"].width = 12  # Borrower
+    ws.column_dimensions["C"].width = 22  # Lender
+    ws.column_dimensions["D"].width = 14  # Type
+    ws.column_dimensions["E"].width = 18  # Outstanding
+    ws.column_dimensions["F"].width = 18  # Interest Rate
+    ws.column_dimensions["G"].width = 18  # Maturity
+    ws.column_dimensions["H"].width = 18  # Security
 
     facilities = [
         ("Revolving Credit Facility", "CE", "ABN AMRO Bank N.V.",
@@ -1522,6 +1547,15 @@ def _write_employee_census_eu(
     for c, h in enumerate(headers, 1):
         ws.cell(row=1, column=c, value=h)
     _style_header_row(ws, 1, len(headers))
+
+    # Column widths — prevent ### overflow in PDF rendering
+    ws.column_dimensions["A"].width = 10  # Entity
+    ws.column_dimensions["B"].width = 16  # Jurisdiction
+    ws.column_dimensions["C"].width = 20  # Department
+    ws.column_dimensions["D"].width = 12  # Headcount
+    ws.column_dimensions["E"].width = 16  # Avg Salary
+    ws.column_dimensions["F"].width = 22  # Works Council
+    ws.column_dimensions["G"].width = 36  # Social Insurance System
 
     rows = [
         ("CE", "Netherlands", "Management", 5, 220000, "N/A", "Dutch social insurance (ZVW/WW)"),
@@ -2099,6 +2133,14 @@ def _write_customer_list_eu(
         ws.cell(row=1, column=c, value=h)
     _style_header_row(ws, 1, len(headers))
 
+    # Column widths — prevent ### overflow in PDF rendering
+    ws.column_dimensions["A"].width = 30  # Customer
+    ws.column_dimensions["B"].width = 10  # Entity
+    ws.column_dimensions["C"].width = 12  # Country
+    ws.column_dimensions["D"].width = 22  # FY2024 Revenue
+    ws.column_dimensions["E"].width = 18  # Revenue Share
+    ws.column_dimensions["F"].width = 14  # Currency
+
     customers = [
         ("Autohaus Müller GmbH", "CP", "Germany", 12500000, 14.9, "EUR"),
         ("BMW AG", "CP", "Germany", 8200000, 9.8, "EUR"),
@@ -2147,6 +2189,14 @@ def _write_vendor_list_eu(
     for c, h in enumerate(headers, 1):
         ws.cell(row=1, column=c, value=h)
     _style_header_row(ws, 1, len(headers))
+
+    # Column widths — prevent ### overflow in PDF rendering
+    ws.column_dimensions["A"].width = 34  # Vendor
+    ws.column_dimensions["B"].width = 10  # Entity
+    ws.column_dimensions["C"].width = 20  # Category
+    ws.column_dimensions["D"].width = 12  # Country
+    ws.column_dimensions["E"].width = 18  # FY2024 Spend
+    ws.column_dimensions["F"].width = 16  # Payment Terms
 
     vendors = [
         ("thyssenkrupp Materials Services", "CP", "Raw Materials", "Germany", 15000000, "Net 45"),

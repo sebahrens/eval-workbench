@@ -423,3 +423,31 @@ class TestFileCount:
         input_dir = output / "test_cases/TC-12-EU/input_files"
         count = sum(1 for p in input_dir.rglob("*") if p.is_file())
         assert count == 42, f"Expected 42 input files, got {count}"
+
+
+class TestColumnWidths:
+    """Regression: spreadsheets must have explicit column widths to prevent ### overflow."""
+
+    _AFFECTED_FILES = [
+        ("02_financial/group_management_accounts_fy2025_ytd.xlsx", 7),
+        ("02_financial/group_budget_fy2025.xlsx", 4),
+        ("02_financial/group_debt_schedule.xlsx", 8),
+        ("06_operations/customer_list_with_revenue.xlsx", 6),
+        ("06_operations/vendor_list.xlsx", 6),
+    ]
+
+    @pytest.mark.parametrize("rel_path,expected_cols", _AFFECTED_FILES,
+                             ids=[p for p, _ in _AFFECTED_FILES])
+    def test_columns_have_explicit_widths(self, rel_path: str, expected_cols: int) -> None:
+        """Every data column must have an explicit width > default (8)."""
+        output, _ = _ensure_emitted()
+        xlsx_path = output / _DR / rel_path
+        wb = openpyxl.load_workbook(xlsx_path)
+        ws = wb.active
+        for col_idx in range(1, expected_cols + 1):
+            letter = openpyxl.utils.get_column_letter(col_idx)
+            dim = ws.column_dimensions.get(letter)
+            assert dim is not None and dim.width is not None and dim.width > 8, (
+                f"{rel_path} column {letter}: width not set or too narrow "
+                f"(got {dim.width if dim else 'None'})"
+            )
