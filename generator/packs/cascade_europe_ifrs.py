@@ -14,6 +14,7 @@ from generator.formatters.tc09_eu import emit_tc09_eu
 from generator.formatters.tc10_eu import emit_tc10_eu
 from generator.formatters.tc12_eu import emit_tc12_eu
 from generator.formatters.tc16_eu import emit_tc16_eu
+from generator.formatters.tc18_eu import emit_tc18_eu
 from generator.packs import ScenarioPack
 
 _EMITTERS = [
@@ -25,13 +26,15 @@ _EMITTERS = [
     emit_tc10_eu,
     emit_tc12_eu,
     emit_tc16_eu,
+    emit_tc18_eu,
 ]
 
 # Canary file keys — TC-04-EU: 15 lease PDFs + 1 schedule = 16; TC-06-EU: 4 files;
 # TC-07-EU: 8 allocation PDFs + 1 investment register + 1 WHT summary = 10;
 # TC-08-EU: 1 CSV + 14 DOCX + 3 XLSX + 1 XLSX = 19; TC-09-EU: 3 XLSX + 2 PDF = 5;
 # TC-10-EU: 3 XLSX + 1 DOCX = 4; TC-12-EU: 36 data room files + 1 checklist = 37;
-# TC-16-EU: 1 DOCX + 1 XLSX + 1 DOCX = 3
+# TC-16-EU: 1 DOCX + 1 XLSX + 1 DOCX = 3;
+# TC-18-EU: 6 prior-year xlsx + 4 prior-year docx + 5 current-year = 15
 _CANARY_FILE_KEYS: list[str] = sorted([
     # TC-04-EU
     "tc04eu_lease_001",
@@ -144,12 +147,31 @@ _CANARY_FILE_KEYS: list[str] = sorted([
     "tc16eu_client_profile",
     "tc16eu_engagement_template",
     "tc16eu_fee_schedule",
+    # TC-18-EU (6 prior-year xlsx + 4 prior-year docx + 5 current-year = 15 canary keys)
+    "tc18eu_cy_bank_statements_fy2025",
+    "tc18eu_cy_goodwill_impairment_ifrs_fy2025",
+    "tc18eu_cy_lease_schedule_fy2025",
+    "tc18eu_cy_mgmt_projections_fy2025",
+    "tc18eu_cy_trial_balance_fy2025",
+    "tc18eu_memo_management_letter_fy2024",
+    "tc18eu_memo_planning_fy2024",
+    "tc18eu_memo_risk_assessment_fy2024",
+    "tc18eu_memo_summary_fy2024",
+    "tc18eu_wp_balance_sheet_fy2024",
+    "tc18eu_wp_cash_fy2024",
+    "tc18eu_wp_fixed_assets_fy2024",
+    "tc18eu_wp_leases_fy2024",
+    "tc18eu_wp_operating_expenses_fy2024",
+    "tc18eu_wp_revenue_fy2024",
 ])
 
 PACK = ScenarioPack(
     pack_id="cascade_europe_ifrs",
     display_name="Cascade Europe -- IFRS/OECD Variants",
-    test_cases=["TC-04-EU", "TC-06-EU", "TC-07-EU", "TC-08-EU", "TC-09-EU", "TC-10-EU", "TC-12-EU", "TC-16-EU"],
+    test_cases=[
+        "TC-04-EU", "TC-06-EU", "TC-07-EU", "TC-08-EU", "TC-09-EU",
+        "TC-10-EU", "TC-12-EU", "TC-16-EU", "TC-18-EU",
+    ],
     canary_file_keys=_CANARY_FILE_KEYS,
     emitters=_EMITTERS,
     dependencies=["cascade_accounting_core"],
