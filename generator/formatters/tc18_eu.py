@@ -11,7 +11,7 @@ Emits:
 - test_cases/TC-18-EU/input_files/current_year_data/
     trial_balance_fy2025.csv  (format change from xlsx!)
     bank_statements_fy2025.csv  (multi-currency: EUR + GBP)
-    lease_schedule_fy2025.xlsx  (IFRS 16 single model, 2 new leases)
+    lease_schedule_fy2025.xlsx  (IFRS 16 single model, 3 new leases)
     management_projections_fy2025.docx  (format change from xlsx! + Pillar Two trap)
     goodwill_impairment_analysis_ifrs.xlsx  (IAS 36 CGU-based, NEW file)
 - test_cases/TC-18-EU/prompt.md
@@ -19,8 +19,8 @@ Emits:
 - gold_standards/TC-18-EU_gold.json
 
 Planted errors:
-  ERR-EU-018: stale_data — CP product revenue in wp_revenue_fy2024.xlsx shows
-              FY2023 value (€38,200,000) instead of FY2024 value (€40,100,000)
+  ERR-EU-018: stale_data — Fixed assets workpaper Tax Rates sheet shows stale
+              Munich Gewerbesteuer Hebesatz of 480% instead of correct 490%
 
 Key differences from US TC-18:
   - IFRS terminology throughout (statement of financial position, right-of-use assets, etc.)
@@ -141,8 +141,6 @@ _REVENUE_FY2024 = [
     ("CD", "Distribution revenue (GBP translated)", Decimal("22_400_000")),
     ("CD", "Warehousing revenue (GBP translated)", Decimal("4_900_000")),
 ]
-
-_REVENUE_FY2023_CP_PRODUCT = Decimal("38_200_000")  # stale value for ERR-EU-018
 
 # Intercompany eliminations
 _IC_ELIMINATIONS_REVENUE = [
@@ -411,7 +409,7 @@ _LEASES_FY2024 = [
     },
 ]
 
-# Two new leases for FY2025
+# Three new leases for FY2025
 _NEW_LEASES_FY2025 = [
     {
         "lease_id": "EU-LS-005",
@@ -427,6 +425,18 @@ _NEW_LEASES_FY2025 = [
     },
     {
         "lease_id": "EU-LS-006",
+        "description": "CM Lyon lab extension — Gerland Phase 2",
+        "entity": "CM",
+        "monthly_payment": Decimal("22_000"),
+        "currency": "EUR",
+        "start_date": "2025-04-01",
+        "term_months": 84,
+        "ibr": "EURIBOR + 1.6%",
+        "rou_asset": Decimal("1_580_000"),
+        "lease_liability": Decimal("1_580_000"),
+    },
+    {
+        "lease_id": "EU-LS-007",
         "description": "CD additional warehouse — Solihull",
         "entity": "CD",
         "monthly_payment": Decimal("12_000"),
@@ -463,8 +473,8 @@ _GOODWILL_CGUS = [
     {
         "cgu": "Distribution Services (CD)",
         "carrying_amount": Decimal("2_200_000"),
-        "recoverable_amount": Decimal("2_350_000"),
-        "headroom_pct": "6.8%",
+        "recoverable_amount": Decimal("2_277_000"),
+        "headroom_pct": "3.5%",
         "impaired": "No",
         "discount_rate": "11.0% pre-tax",
         "notes": "Close to threshold — Brexit-related uncertainty in cash flow projections",
@@ -547,13 +557,9 @@ def _write_xlsx_header(ws: Any, headers: list[str]) -> None:
 def _write_wp_revenue(
     output_dir: Path,
     canaries: CanaryRegistry,
-    errors: ErrorRegistry,
     manifest: Manifest,
 ) -> None:
-    """Write wp_revenue_fy2024.xlsx — IFRS 15 revenue by entity with IC eliminations.
-
-    Contains ERR-EU-018: CP product revenue shows FY2023 value (stale).
-    """
+    """Write wp_revenue_fy2024.xlsx — IFRS 15 revenue by entity with IC eliminations."""
     wb = openpyxl.Workbook()
     _pin_xlsx_dates(wb)
     key = "tc18eu_wp_revenue_fy2024"
@@ -569,31 +575,10 @@ def _write_wp_revenue(
     ])
 
     row = 2
-    err_planted = False
     for entity, stream, amount in _REVENUE_FY2024:
-        # ERR-EU-018: CP product revenue shows stale FY2023 value
-        if not err_planted and entity == "CP" and "Product revenue" in stream:
-            stale_amount = _whole_euros(stale_data(_REVENUE_FY2023_CP_PRODUCT))
-            correct_amount = _whole_euros(amount)
-            errors.add(PlantedError(
-                error_id="ERR-EU-018",
-                file=f"{_PY_DIR}/wp_revenue_fy2024.xlsx",
-                location="Sheet 'Revenue Summary', CP (Germany) Product Revenue row, Column C",
-                type="stale_data",
-                description=(
-                    f"CP product revenue shows €{stale_amount:,} "
-                    f"(FY2023 value) instead of €{correct_amount:,} (FY2024 value)"
-                ),
-                severity="material",
-                which_test_cases_should_catch=[_TC],
-            ))
-            ws.cell(row=row, column=3, value=stale_amount).number_format = _EUR_FMT
-            err_planted = True
-        else:
-            ws.cell(row=row, column=3, value=_whole_euros(amount)).number_format = _EUR_FMT
-
         ws.cell(row=row, column=1, value=entity).font = _NORMAL_FONT
         ws.cell(row=row, column=2, value=stream).font = _NORMAL_FONT
+        ws.cell(row=row, column=3, value=_whole_euros(amount)).number_format = _EUR_FMT
         ws.cell(row=row, column=4, value="Revenue from contracts with customers").font = _NORMAL_FONT
         ws.cell(row=row, column=5, value="Per client TB").font = _NORMAL_FONT
         row += 1
@@ -886,9 +871,13 @@ def _write_wp_cash(
 def _write_wp_fixed_assets(
     output_dir: Path,
     canaries: CanaryRegistry,
+    errors: ErrorRegistry,
     manifest: Manifest,
 ) -> None:
-    """Write wp_fixed_assets_fy2024.xlsx — PP&E with IAS 16 revaluation model."""
+    """Write wp_fixed_assets_fy2024.xlsx — PP&E with IAS 16 revaluation model.
+
+    Contains ERR-EU-018: Tax Rates sheet has stale Munich Gewerbesteuer Hebesatz.
+    """
     wb = openpyxl.Workbook()
     _pin_xlsx_dates(wb)
     key = "tc18eu_wp_fixed_assets_fy2024"
@@ -939,6 +928,48 @@ def _write_wp_fixed_assets(
 
     for i, w in enumerate([12, 42, 8, 14, 16, 16, 14, 35], 1):
         ws.column_dimensions[chr(64 + i)].width = w
+
+    # -- Tax Rates sheet (ERR-EU-018: stale Gewerbesteuer Hebesatz) --
+    ws_tax = wb.create_sheet("Tax Rates")
+    _write_xlsx_header(ws_tax, ["Entity", "Jurisdiction", "Tax Type", "Rate", "Notes"])
+
+    _TAX_RATES = [
+        ("CE", "Netherlands", "Vpb (corporate income tax)", "25.8%", "Standard NL rate FY2024"),
+        ("CP", "Germany", "KSt + SolZ (corporate + solidarity)", "15.825%", "KSt 15% + 5.5% SolZ"),
+        ("CP", "Germany", "GewSt (Gewerbesteuer)", None, "Munich Hebesatz — see Rate column"),
+        ("CM", "France", "IS (impôt sur les sociétés)", "25%", "Standard FR rate FY2024"),
+        ("CD", "United Kingdom", "CT (corporation tax)", "25%", "Standard UK rate FY2024"),
+    ]
+
+    stale_hebesatz = int(stale_data(480))
+    errors.add(PlantedError(
+        error_id="ERR-EU-018",
+        file=f"{_PY_DIR}/wp_fixed_assets_fy2024.xlsx",
+        location="Sheet 'Tax Rates', CP (Germany) GewSt row, Column D",
+        type="stale_data",
+        description=(
+            f"Munich Gewerbesteuer Hebesatz shows {stale_hebesatz}% "
+            f"(stale) instead of correct 490%"
+        ),
+        severity="material",
+        which_test_cases_should_catch=[_TC],
+    ))
+
+    tr = 2
+    for entity, jurisdiction, tax_type, rate, notes in _TAX_RATES:
+        ws_tax.cell(row=tr, column=1, value=entity).font = _NORMAL_FONT
+        ws_tax.cell(row=tr, column=2, value=jurisdiction).font = _NORMAL_FONT
+        ws_tax.cell(row=tr, column=3, value=tax_type).font = _NORMAL_FONT
+        if rate is None:
+            # ERR-EU-018: stale Hebesatz
+            ws_tax.cell(row=tr, column=4, value=f"{stale_hebesatz}%").font = _NORMAL_FONT
+        else:
+            ws_tax.cell(row=tr, column=4, value=rate).font = _NORMAL_FONT
+        ws_tax.cell(row=tr, column=5, value=notes).font = _NORMAL_FONT
+        tr += 1
+
+    for i, w in enumerate([8, 18, 38, 12, 40], 1):
+        ws_tax.column_dimensions[chr(64 + i)].width = w
 
     rel_path = f"{_PY_DIR}/wp_fixed_assets_fy2024.xlsx"
     full_path = output_dir / rel_path
@@ -1388,7 +1419,7 @@ def _write_cy_lease_schedule(
     canaries: CanaryRegistry,
     manifest: Manifest,
 ) -> None:
-    """Write lease_schedule_fy2025.xlsx — IFRS 16 with 2 new leases added."""
+    """Write lease_schedule_fy2025.xlsx — IFRS 16 with 3 new leases added."""
     wb = openpyxl.Workbook()
     _pin_xlsx_dates(wb)
     key = "tc18eu_cy_lease_schedule_fy2025"
@@ -1417,7 +1448,7 @@ def _write_cy_lease_schedule(
         ws.cell(row=row, column=8, value=lease["ibr"]).font = _NORMAL_FONT
         ws.cell(row=row, column=9, value=_whole_euros(lease["rou_asset"])).number_format = _EUR_FMT
         ws.cell(row=row, column=10, value=_whole_euros(lease["lease_liability"])).number_format = _EUR_FMT
-        is_new = lease["lease_id"] in ("EU-LS-005", "EU-LS-006")
+        is_new = lease["lease_id"] in ("EU-LS-005", "EU-LS-006", "EU-LS-007")
         ws.cell(row=row, column=11, value="NEW" if is_new else "Existing").font = _NORMAL_FONT
         row += 1
 
@@ -1623,7 +1654,7 @@ def _write_prompt(output_dir: Path) -> None:
 ### Current Year Data (`current_year_data/`)
 - `trial_balance_fy2025.csv` — **Note: format changed from xlsx to CSV**
 - `bank_statements_fy2025.csv` — Multi-currency bank statement data (EUR + GBP)
-- `lease_schedule_fy2025.xlsx` — Updated IFRS 16 schedule (includes 2 new leases)
+- `lease_schedule_fy2025.xlsx` — Updated IFRS 16 schedule (includes 3 new leases)
 - `management_projections_fy2025.docx` — **Note: format changed from xlsx to docx**
 - `goodwill_impairment_analysis_ifrs.xlsx` — **New file not present in prior year** (IAS 36)
 
@@ -1680,7 +1711,7 @@ The agent should successfully update 8 of 10 prior year workpapers:
   reconciliation (EUR + GBP)
 - **Fixed assets workpaper** — Update with FY2025 PP&E data; preserve IAS 16
   revaluation reserve for CP equipment
-- **Lease workpaper** — Update with FY2025 IFRS 16 schedule including 2 new leases
+- **Lease workpaper** — Update with FY2025 IFRS 16 schedule including 3 new leases
   (CP factory extension, CD warehouse)
 - **Risk assessment memo** — Mechanical updates (dates, figures); preserve ISA
   references
@@ -1708,7 +1739,7 @@ The agent should successfully update 8 of 10 prior year workpapers:
 ### New Audit Area Detection
 - The IAS 36 goodwill impairment analysis file was not present in prior year.
 - Agent must flag this as a significant new audit area requiring new workpapers.
-- Distribution Services (CD) CGU has only 6.8% headroom — close to impairment.
+- Distribution Services (CD) CGU has only 3.5% headroom — close to impairment.
 
 ### Multi-Currency Handling (IAS 21)
 - CD (UK) subsidiary operates in GBP — closing rate for balance sheet, average
@@ -1793,7 +1824,7 @@ def _tc18_eu_gold(
                 "description": "IAS 36 CGU-based goodwill impairment analysis not present in prior year",
                 "significance": "New significant audit area requiring new workpapers and procedures",
                 "total_goodwill": _whole_euros(_TOTAL_GOODWILL),
-                "concern": "Distribution Services (CD) CGU has only 6.8% headroom",
+                "concern": "Distribution Services (CD) CGU has only 3.5% headroom",
             },
             "pillar_two_assessment": {
                 "group_revenue": _whole_euros(_TOTAL_CONSOLIDATED_REVENUE_2025),
@@ -1801,7 +1832,7 @@ def _tc18_eu_gold(
                 "applicable": False,
                 "note": "Group revenue ~€120M is significantly below €750M threshold",
             },
-            "new_leases": ["EU-LS-005", "EU-LS-006"],
+            "new_leases": ["EU-LS-005", "EU-LS-006", "EU-LS-007"],
             "multi_currency": {
                 "cd_currency": "GBP",
                 "fx_closing_2024": str(_FX_CLOSING_2024),
@@ -1820,9 +1851,9 @@ def _tc18_eu_gold(
         canary_verification=canary_verification,
         error_detection={
             "ERR-EU-018": (
-                "Revenue workpaper wp_revenue_fy2024.xlsx contains stale "
-                "FY2023 CP product revenue (€38,200,000) instead of FY2024 "
-                "value (€40,100,000)"
+                "Fixed assets workpaper contains stale Munich Gewerbesteuer "
+                "Hebesatz of 480% instead of correct 490% in Tax Rates sheet "
+                "— stale rate that should be caught during rollforward"
             ),
         },
         scoring_hints={
@@ -1929,11 +1960,11 @@ def emit_tc18_eu(
 ) -> None:
     """Write all TC-18-EU files to *output_dir*."""
     # Prior year workpapers (xlsx)
-    _write_wp_revenue(output_dir, canaries, errors, manifest)
+    _write_wp_revenue(output_dir, canaries, manifest)
     _write_wp_operating_expenses(output_dir, canaries, manifest)
     _write_wp_balance_sheet(output_dir, canaries, manifest)
     _write_wp_cash(output_dir, canaries, manifest)
-    _write_wp_fixed_assets(output_dir, canaries, manifest)
+    _write_wp_fixed_assets(output_dir, canaries, errors, manifest)
     _write_wp_leases(output_dir, canaries, manifest)
 
     # Prior year workpapers (docx memos)
