@@ -50,6 +50,7 @@ from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 import docx
 import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.worksheet.page import PageMargins
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -732,6 +733,15 @@ def _style_header_row(ws: Any, row: int, col_count: int) -> None:
         cell.alignment = Alignment(horizontal="center")
 
 
+def _set_landscape_fit(ws: Any) -> None:
+    """Configure worksheet for landscape PDF rendering with fit-to-page."""
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_margins = PageMargins(left=0.4, right=0.4, top=0.5, bottom=0.5)
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 01_corporate — 8 PDFs
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1126,14 +1136,15 @@ def _write_management_accounts_xlsx(
         ws.cell(row=1, column=c, value=h)
     _style_header_row(ws, 1, len(headers))
 
-    # Column widths — prevent ### overflow in PDF rendering
-    ws.column_dimensions["A"].width = 16  # Entity
-    ws.column_dimensions["B"].width = 18  # Revenue YTD
-    ws.column_dimensions["C"].width = 16  # COGS YTD
-    ws.column_dimensions["D"].width = 16  # GP YTD
-    ws.column_dimensions["E"].width = 16  # OpEx YTD
-    ws.column_dimensions["F"].width = 16  # EBIT YTD
-    ws.column_dimensions["G"].width = 14  # Budget Var
+    # Column widths — prevent ### overflow in LibreOffice PDF rendering
+    ws.column_dimensions["A"].width = 20  # Entity
+    ws.column_dimensions["B"].width = 22  # Revenue YTD
+    ws.column_dimensions["C"].width = 20  # COGS YTD
+    ws.column_dimensions["D"].width = 20  # GP YTD
+    ws.column_dimensions["E"].width = 20  # OpEx YTD
+    ws.column_dimensions["F"].width = 20  # EBIT YTD
+    ws.column_dimensions["G"].width = 18  # Budget Var
+    _set_landscape_fit(ws)
 
     rows = [
         ("CE", 2800000, 0, 2800000, 2100000, 700000, -2.1),
@@ -1181,11 +1192,12 @@ def _write_budget_xlsx(
         ws.cell(row=1, column=c, value=h)
     _style_header_row(ws, 1, len(headers))
 
-    # Column widths — prevent ### overflow in PDF rendering
-    ws.column_dimensions["A"].width = 16  # Entity
-    ws.column_dimensions["B"].width = 20  # FY2024 Actual
-    ws.column_dimensions["C"].width = 20  # FY2025 Budget
-    ws.column_dimensions["D"].width = 12  # Growth
+    # Column widths — prevent ### overflow in LibreOffice PDF rendering
+    ws.column_dimensions["A"].width = 20  # Entity
+    ws.column_dimensions["B"].width = 24  # FY2024 Actual
+    ws.column_dimensions["C"].width = 24  # FY2025 Budget
+    ws.column_dimensions["D"].width = 16  # Growth
+    _set_landscape_fit(ws)
 
     rows = [
         ("CE", 11500000, 12200000, 6.1),
@@ -1228,15 +1240,16 @@ def _write_debt_schedule_xlsx(
         ws.cell(row=1, column=c, value=h)
     _style_header_row(ws, 1, len(headers))
 
-    # Column widths — prevent ### overflow in PDF rendering
-    ws.column_dimensions["A"].width = 26  # Facility
-    ws.column_dimensions["B"].width = 12  # Borrower
-    ws.column_dimensions["C"].width = 22  # Lender
-    ws.column_dimensions["D"].width = 14  # Type
-    ws.column_dimensions["E"].width = 18  # Outstanding
-    ws.column_dimensions["F"].width = 18  # Interest Rate
-    ws.column_dimensions["G"].width = 18  # Maturity
-    ws.column_dimensions["H"].width = 18  # Security
+    # Column widths — prevent ### overflow in LibreOffice PDF rendering
+    ws.column_dimensions["A"].width = 30  # Facility
+    ws.column_dimensions["B"].width = 16  # Borrower
+    ws.column_dimensions["C"].width = 24  # Lender
+    ws.column_dimensions["D"].width = 16  # Type
+    ws.column_dimensions["E"].width = 20  # Outstanding
+    ws.column_dimensions["F"].width = 20  # Interest Rate
+    ws.column_dimensions["G"].width = 20  # Maturity
+    ws.column_dimensions["H"].width = 20  # Security
+    _set_landscape_fit(ws)
 
     facilities = [
         ("Revolving Credit Facility", "CE", "ABN AMRO Bank N.V.",
@@ -1700,6 +1713,14 @@ def _write_org_chart_detailed_eu(
         ws.cell(row=1, column=c, value=h)
     _style_header_row(ws, 1, len(headers))
 
+    # Column widths — prevent ### overflow in PDF rendering
+    ws.column_dimensions["A"].width = 10  # Entity
+    ws.column_dimensions["B"].width = 16  # Department
+    ws.column_dimensions["C"].width = 36  # Role
+    ws.column_dimensions["D"].width = 24  # Name
+    ws.column_dimensions["E"].width = 24  # Reports To
+    ws.column_dimensions["F"].width = 16  # Location
+
     rows = [
         ("CE", "Management", "Managing Director", "Erik van der Berg", "Board", "Amsterdam"),
         ("CE", "Finance", "Finance Director", "Anna de Vries", "Erik van der Berg", "Amsterdam"),
@@ -1932,6 +1953,16 @@ def _write_vat_returns_summary_eu(
         ws.cell(row=1, column=c, value=h)
     _style_header_row(ws, 1, len(headers))
 
+    # Column widths — prevent ### overflow in PDF rendering
+    ws.column_dimensions["A"].width = 10  # Entity
+    ws.column_dimensions["B"].width = 10  # Quarter
+    ws.column_dimensions["C"].width = 26  # Output VAT Domestic
+    ws.column_dimensions["D"].width = 30  # Output VAT Intra-EU/Export
+    ws.column_dimensions["E"].width = 24  # Input VAT Domestic
+    ws.column_dimensions["F"].width = 26  # Input VAT Reverse Charge
+    ws.column_dimensions["G"].width = 28  # VAT Payable
+    ws.column_dimensions["H"].width = 14  # Filing Status
+
     for r, row_data in enumerate(_VAT_RETURNS, 2):
         entity, qtr, out_dom, out_eu, in_dom, in_rc, payable, status = row_data
         ws.cell(row=r, column=1, value=entity)
@@ -2089,6 +2120,17 @@ def _write_equipment_list_eu(
         ws.cell(row=1, column=c, value=h)
     _style_header_row(ws, 1, len(headers))
 
+    # Column widths — prevent ### overflow in LibreOffice PDF rendering
+    ws.column_dimensions["A"].width = 16  # Asset ID
+    ws.column_dimensions["B"].width = 14  # Entity
+    ws.column_dimensions["C"].width = 36  # Description
+    ws.column_dimensions["D"].width = 16  # Location
+    ws.column_dimensions["E"].width = 18  # Cost
+    ws.column_dimensions["F"].width = 22  # Accum. Depr.
+    ws.column_dimensions["G"].width = 16  # NBV
+    ws.column_dimensions["H"].width = 14  # Useful Life
+    _set_landscape_fit(ws)
+
     assets = [
         ("CP-EQ-001", "CP", "CNC Machining Centre (5-axis)", "Munich", 1200000, 480000, 720000, "10 years"),
         ("CP-EQ-002", "CP", "Thermal Spray Coating System", "Munich", 850000, 340000, 510000, "10 years"),
@@ -2133,13 +2175,14 @@ def _write_customer_list_eu(
         ws.cell(row=1, column=c, value=h)
     _style_header_row(ws, 1, len(headers))
 
-    # Column widths — prevent ### overflow in PDF rendering
-    ws.column_dimensions["A"].width = 30  # Customer
-    ws.column_dimensions["B"].width = 10  # Entity
-    ws.column_dimensions["C"].width = 12  # Country
-    ws.column_dimensions["D"].width = 22  # FY2024 Revenue
-    ws.column_dimensions["E"].width = 18  # Revenue Share
-    ws.column_dimensions["F"].width = 14  # Currency
+    # Column widths — prevent ### overflow in LibreOffice PDF rendering
+    ws.column_dimensions["A"].width = 34  # Customer
+    ws.column_dimensions["B"].width = 14  # Entity
+    ws.column_dimensions["C"].width = 16  # Country
+    ws.column_dimensions["D"].width = 24  # FY2024 Revenue
+    ws.column_dimensions["E"].width = 20  # Revenue Share
+    ws.column_dimensions["F"].width = 16  # Currency
+    _set_landscape_fit(ws)
 
     customers = [
         ("Autohaus Müller GmbH", "CP", "Germany", 12500000, 14.9, "EUR"),
@@ -2190,13 +2233,14 @@ def _write_vendor_list_eu(
         ws.cell(row=1, column=c, value=h)
     _style_header_row(ws, 1, len(headers))
 
-    # Column widths — prevent ### overflow in PDF rendering
-    ws.column_dimensions["A"].width = 34  # Vendor
-    ws.column_dimensions["B"].width = 10  # Entity
-    ws.column_dimensions["C"].width = 20  # Category
-    ws.column_dimensions["D"].width = 12  # Country
-    ws.column_dimensions["E"].width = 18  # FY2024 Spend
-    ws.column_dimensions["F"].width = 16  # Payment Terms
+    # Column widths — prevent ### overflow in LibreOffice PDF rendering
+    ws.column_dimensions["A"].width = 38  # Vendor
+    ws.column_dimensions["B"].width = 14  # Entity
+    ws.column_dimensions["C"].width = 24  # Category
+    ws.column_dimensions["D"].width = 16  # Country
+    ws.column_dimensions["E"].width = 22  # FY2024 Spend
+    ws.column_dimensions["F"].width = 18  # Payment Terms
+    _set_landscape_fit(ws)
 
     vendors = [
         ("thyssenkrupp Materials Services", "CP", "Raw Materials", "Germany", 15000000, "Net 45"),
@@ -2300,6 +2344,14 @@ def _write_software_licenses_eu(
         ws.cell(row=1, column=c, value=h)
     _style_header_row(ws, 1, len(headers))
 
+    # Column widths — prevent ### overflow in PDF rendering
+    ws.column_dimensions["A"].width = 20  # Software
+    ws.column_dimensions["B"].width = 22  # Vendor
+    ws.column_dimensions["C"].width = 16  # License Type
+    ws.column_dimensions["D"].width = 10  # Entities
+    ws.column_dimensions["E"].width = 16  # Annual Cost
+    ws.column_dimensions["F"].width = 14  # Renewal Date
+
     licenses = [
         ("SAP S/4HANA", "SAP SE", "Enterprise", "Group", 280000, "2026-01-01"),
         ("Microsoft 365", "Microsoft", "Subscription", "Group", 95000, "2025-07-01"),
@@ -2400,6 +2452,17 @@ def _write_gdpr_register(
     for c, h in enumerate(headers, 1):
         ws.cell(row=1, column=c, value=h)
     _style_header_row(ws, 1, len(headers))
+
+    # Column widths — prevent ### overflow in PDF rendering
+    ws.column_dimensions["A"].width = 28  # Processing Activity
+    ws.column_dimensions["B"].width = 14  # Controller
+    ws.column_dimensions["C"].width = 20  # Processor
+    ws.column_dimensions["D"].width = 28  # Data Categories
+    ws.column_dimensions["E"].width = 22  # Data Subjects
+    ws.column_dimensions["F"].width = 26  # Legal Basis
+    ws.column_dimensions["G"].width = 24  # Retention Period
+    ws.column_dimensions["H"].width = 18  # DPA Status
+    ws.column_dimensions["I"].width = 22  # Transfer Outside EU
 
     activities = [
         ("Employee payroll processing", "CP/CM/CE", "PayrollPlus GmbH",

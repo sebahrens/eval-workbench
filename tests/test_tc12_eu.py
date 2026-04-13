@@ -432,8 +432,14 @@ class TestColumnWidths:
         ("02_financial/group_management_accounts_fy2025_ytd.xlsx", 7),
         ("02_financial/group_budget_fy2025.xlsx", 4),
         ("02_financial/group_debt_schedule.xlsx", 8),
+        ("04_hr/group_employee_census.xlsx", 7),
+        ("04_hr/group_org_chart_detailed.xlsx", 6),
+        ("05_tax/group_vat_returns_summary.xlsx", 8),
+        ("06_operations/equipment_list.xlsx", 8),
         ("06_operations/customer_list_with_revenue.xlsx", 6),
         ("06_operations/vendor_list.xlsx", 6),
+        ("07_technology/software_licenses.xlsx", 6),
+        ("08_compliance/gdpr_data_processing_register.xlsx", 9),
     ]
 
     @pytest.mark.parametrize("rel_path,expected_cols", _AFFECTED_FILES,
