@@ -12,6 +12,7 @@ from generator.formatters.tc07_eu import emit_tc07_eu
 from generator.formatters.tc08_eu import emit_tc08_eu
 from generator.formatters.tc09_eu import emit_tc09_eu
 from generator.formatters.tc10_eu import emit_tc10_eu
+from generator.formatters.tc12_eu import emit_tc12_eu
 from generator.packs import ScenarioPack
 
 _EMITTERS = [
@@ -21,12 +22,13 @@ _EMITTERS = [
     emit_tc08_eu,
     emit_tc09_eu,
     emit_tc10_eu,
+    emit_tc12_eu,
 ]
 
 # Canary file keys — TC-04-EU: 15 lease PDFs + 1 schedule = 16; TC-06-EU: 4 files;
 # TC-07-EU: 8 allocation PDFs + 1 investment register + 1 WHT summary = 10;
 # TC-08-EU: 1 CSV + 14 DOCX + 3 XLSX + 1 XLSX = 19; TC-09-EU: 3 XLSX + 2 PDF = 5;
-# TC-10-EU: 3 XLSX + 1 DOCX = 4
+# TC-10-EU: 3 XLSX + 1 DOCX = 4; TC-12-EU: 36 data room files + 1 checklist = 37
 _CANARY_FILE_KEYS: list[str] = sorted([
     # TC-04-EU
     "tc04eu_lease_001",
@@ -92,12 +94,55 @@ _CANARY_FILE_KEYS: list[str] = sorted([
     "tc10eu_intercompany_sales_fy2025",
     "tc10eu_vat_registrations",
     "tc10eu_vat_returns_summary_fy2025",
+    # TC-12-EU (36 data room files + 1 checklist = 37 canary keys)
+    "tc12eu_benefits_summary_by_country",
+    "tc12eu_cd_companies_house_filing",
+    "tc12eu_cd_ct600_fy2024",
+    "tc12eu_ce_articles_of_association",
+    "tc12eu_ce_board_minutes_2024",
+    "tc12eu_ce_board_minutes_2025",
+    "tc12eu_ce_kvk_extract",
+    "tc12eu_ce_vpb_aangifte_fy2024",
+    "tc12eu_cm_kbis_extract",
+    "tc12eu_cm_liasse_fiscale_fy2024",
+    "tc12eu_cp_handelsregister_auszug",
+    "tc12eu_cp_korperschaftsteuer_fy2023",
+    "tc12eu_cp_korperschaftsteuer_fy2024",
+    "tc12eu_customer_agreement_autohaus",
+    "tc12eu_customer_agreement_renault",
+    "tc12eu_customer_list_with_revenue",
+    "tc12eu_dd_checklist_european",
+    "tc12eu_equipment_list",
+    "tc12eu_facility_leases",
+    "tc12eu_finance_director_agreement_ce",
+    "tc12eu_gdpr_data_processing_register",
+    "tc12eu_group_budget_fy2025",
+    "tc12eu_group_debt_schedule",
+    "tc12eu_group_employee_census",
+    "tc12eu_group_ifrs_financials_fy2023",
+    "tc12eu_group_ifrs_financials_fy2024",
+    "tc12eu_group_management_accounts_ytd",
+    "tc12eu_group_org_chart",
+    "tc12eu_group_org_chart_detailed",
+    "tc12eu_group_vat_returns_summary",
+    "tc12eu_insurance_policies_summary",
+    "tc12eu_ip_assignment_agreements",
+    "tc12eu_it_infrastructure_overview",
+    "tc12eu_managing_director_agreement_ce",
+    "tc12eu_patent_portfolio",
+    "tc12eu_pending_litigation_summary",
+    "tc12eu_software_licenses",
+    "tc12eu_supplier_agreement_thyssenkrupp",
+    "tc12eu_tax_notices_and_assessments",
+    "tc12eu_technical_director_agreement_cm",
+    "tc12eu_vendor_list",
+    "tc12eu_works_council_agreements_cp",
 ])
 
 PACK = ScenarioPack(
     pack_id="cascade_europe_ifrs",
     display_name="Cascade Europe -- IFRS/OECD Variants",
-    test_cases=["TC-04-EU", "TC-06-EU", "TC-07-EU", "TC-08-EU", "TC-09-EU", "TC-10-EU"],
+    test_cases=["TC-04-EU", "TC-06-EU", "TC-07-EU", "TC-08-EU", "TC-09-EU", "TC-10-EU", "TC-12-EU"],
     canary_file_keys=_CANARY_FILE_KEYS,
     emitters=_EMITTERS,
     dependencies=["cascade_accounting_core"],

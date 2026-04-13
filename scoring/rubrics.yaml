@@ -339,6 +339,32 @@ test_cases:
       2: "Some OECD structure but missing DEMPE or benefit test; adequate margin explanation"
       1: "No BEPS/DEMPE reference; no error flagging; US-style language and framework"
 
+  TC-12-EU:
+    title: "European Diligence Data Room Variant"
+    service_line: Advisory
+    difficulty: Adversarial
+    capabilities: [File Reading, RAG, Multi-Step Workflow, File Writing]
+    correctness:
+      3: "All 41 files indexed with correct jurisdiction tags (NL/DE/FR/UK/Group); all 8 red flags identified with jurisdiction-specific context (Munich labor court €180K, managing director 2.5× CoC, Renault CoC clause, 2 missing GDPR DPAs, 2 French IP assignment gaps, 2 expiring EPO patents, open Betriebsprüfung, works council consultation); all 6 missing document categories flagged; ERR-EU-012 transposed digits detected"
+      2: "Most files indexed with jurisdiction tags; 5-7 red flags identified; missed 1-2 jurisdiction-specific nuances; ERR-EU-012 not detected; most missing document categories flagged"
+      1: "Incomplete index; missed major red flags (works council, GDPR, Betriebsprüfung); applied US document taxonomy to European corporate filings"
+    completeness:
+      3: "All 3 deliverables: document index Excel (Path, Category, Jurisdiction, Date, Summary, Red Flags), gap analysis Excel (72 checklist items with Jurisdiction and Priority), red flags Word memo with jurisdiction-specific analysis"
+      2: "2 of 3 deliverables present or one with significant gaps; gap analysis covers fewer than 60 of 72 items"
+      1: "Missing deliverables or index covers fewer than half the files"
+    format_compliance:
+      3: "Excel columns include Jurisdiction; gap analysis cross-references all 72 European checklist items; memo distinguishes mandatory legal requirements from best practices"
+      2: "Functional but missing Jurisdiction column or incomplete cross-reference; memo lacks jurisdiction-specific distinctions"
+      1: "Broken files or index not usable; US-formatted checklist applied to European data room"
+    robustness:
+      3: "Jurisdiction-specific red flag characterization (German labor law KSchG, French IP Code de la propriété intellectuelle, GDPR Art. 28/83, BetrVG §111-113); missing documents prioritized by legal requirement; ERR-EU-012 detected via cross-reference"
+      2: "Red flags identified but without jurisdiction-specific legal context; gap prioritization present but treats all jurisdictions equally"
+      1: "Failed to read files in multiple categories; no jurisdiction-aware analysis; treated European entities as US equivalents"
+    communication:
+      3: "Red flags ranked by severity with jurisdiction-specific rationale; missing documents prioritized distinguishing mandatory (works council, GDPR DPAs, TP documentation) from nice-to-have; recommended deal process steps (e.g., §111 consultation timeline)"
+      2: "Red flags listed but not ranked by jurisdiction-specific severity; missing items noted but not prioritized by legal requirement"
+      1: "Red flags not clearly identified; no jurisdiction-aware prioritization"
+
   TC-07:
     title: "K-1 Extraction & Consolidation"
     service_line: Tax
