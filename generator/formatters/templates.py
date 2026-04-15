@@ -21,8 +21,8 @@ from fpdf import FPDF
 from generator.canaries import CanaryRegistry, embed_canary_docx, embed_canary_pdf_fpdf2
 from generator.manifest import Manifest
 
-_FIXED_ZIP_DT = (2025, 1, 15, 9, 0, 0)
-_FIXED_DATETIME = datetime.datetime(2025, 1, 15, 9, 0, 0)
+_FIXED_ZIP_DT = (2025, 3, 15, 9, 0, 0)
+_FIXED_DATETIME = datetime.datetime(2025, 3, 15, 9, 0, 0)
 
 
 def _save_docx_deterministic(doc: Any, path: str | Path) -> None:
@@ -139,7 +139,7 @@ def _write_cover_page(output_dir: Path, canaries: CanaryRegistry, manifest: Mani
 # ---------------------------------------------------------------------------
 
 # Fixed creation date for determinism
-_FIXED_DATE = datetime.datetime(2025, 1, 15, 9, 0, 0)
+_FIXED_DATE = datetime.datetime(2025, 3, 15, 9, 0, 0)
 
 
 def _write_formatting_guide(output_dir: Path, canaries: CanaryRegistry, manifest: Manifest) -> None:

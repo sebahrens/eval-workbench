@@ -58,8 +58,8 @@ from generator.model.build import CascadeModel
 _TC = "TC-14"
 _INPUT_DIR = f"test_cases/{_TC}/input_files"
 
-_FIXED_DATETIME = datetime.datetime(2025, 3, 28, 9, 0, 0)
-_FIXED_ZIP_DT = (2025, 3, 28, 9, 0, 0)
+_FIXED_DATETIME = datetime.datetime(2025, 3, 15, 9, 0, 0)
+_FIXED_ZIP_DT = (2025, 3, 15, 9, 0, 0)
 
 # Week-end date for the "current" balance sheet (a Friday).
 _BS_DATE = datetime.date(2025, 3, 28)

@@ -67,7 +67,7 @@ _INPUT_DIR = f"test_cases/{_TC}/input_files"
 _LEASES_DIR = f"{_INPUT_DIR}/leases"
 
 # fpdf2 fixed creation date for determinism
-_CREATION_DATE = datetime.datetime(2025, 1, 15, 9, 0, 0)
+_CREATION_DATE = datetime.datetime(2025, 3, 15, 9, 0, 0)
 
 # A4 page size for European documents
 _PAGE_SIZE = A4
@@ -612,7 +612,7 @@ def _write_lease_pdfs(
 
 # ── Partial lease schedule xlsx (IFRS 16) ──────────────────────────────────
 
-_FIXED_DATETIME = datetime.datetime(2025, 1, 15, 9, 0, 0)
+_FIXED_DATETIME = datetime.datetime(2025, 3, 15, 9, 0, 0)
 
 
 def _save_xlsx_deterministic(wb: Any, path: str | Path) -> None:
@@ -624,7 +624,7 @@ def _save_xlsx_deterministic(wb: Any, path: str | Path) -> None:
     writer = ExcelWriter(wb, archive)
     writer.save()
 
-    fixed_date_time = (2025, 1, 15, 9, 0, 0)
+    fixed_date_time = (2025, 3, 15, 9, 0, 0)
     buf.seek(0)
     with ZipFile(buf, "r") as src, ZipFile(str(path), "w", ZIP_DEFLATED) as dst:
         for item in src.infolist():
