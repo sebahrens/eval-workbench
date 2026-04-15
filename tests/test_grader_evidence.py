@@ -257,6 +257,68 @@ class TestAgentDataFallback:
 
         assert result.score == 3
 
+    def test_zero_comparisons_nonempty_expected_scores_1(self, tmp_path: Path) -> None:
+        """When expected_outputs is non-empty but yields zero comparisons, score must be 1."""
+        suite = tmp_path / "suite"
+        tc_id = "TC-99"
+
+        # Gold with expected_outputs containing only structural keys
+        # that are skipped by _compare_recursive (file_type, required_sheets)
+        gold_only_structural = {
+            "expected_outputs": {"file_type": "xlsx", "required_sheets": ["Summary"]},
+            "canary_verification": {},
+            "error_detection": {},
+        }
+        gold_path = _write_gold(suite / "gold_standards", tc_id, gold_only_structural)
+
+        # Agent output with a JSON file so _load_agent_data succeeds
+        agent_out = tmp_path / "agent_output" / tc_id
+        agent_out.mkdir(parents=True, exist_ok=True)
+        (agent_out / "output.json").write_text(json.dumps({"file_type": "xlsx"}))
+
+        grader = TestCaseGrader(
+            test_case_id=tc_id,
+            gold_standard_path=gold_path,
+            agent_output_path=agent_out,
+            suite_dir=suite,
+        )
+        result = grader.grade_correctness()
+
+        assert result.score == 1, (
+            "Zero comparisons with non-empty expected_outputs should score 1, not 3"
+        )
+        assert any(
+            c.name == "correctness_zero_comparisons" for c in result.checks
+        )
+
+    def test_zero_comparisons_empty_expected_scores_3(self, tmp_path: Path) -> None:
+        """When expected_outputs is genuinely empty, score 3 is correct."""
+        suite = tmp_path / "suite"
+        tc_id = "TC-99"
+
+        gold_empty = {
+            "expected_outputs": {},
+            "canary_verification": {},
+            "error_detection": {},
+        }
+        gold_path = _write_gold(suite / "gold_standards", tc_id, gold_empty)
+
+        agent_out = tmp_path / "agent_output" / tc_id
+        agent_out.mkdir(parents=True, exist_ok=True)
+        (agent_out / "output.json").write_text(json.dumps({}))
+
+        grader = TestCaseGrader(
+            test_case_id=tc_id,
+            gold_standard_path=gold_path,
+            agent_output_path=agent_out,
+            suite_dir=suite,
+        )
+        result = grader.grade_correctness()
+
+        assert result.score == 3, (
+            "Zero comparisons with truly empty expected_outputs should score 3"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Evidence expectation checks (ups.12)

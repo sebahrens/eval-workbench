@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import math
 import sys
 from dataclasses import asdict, dataclass, field
@@ -34,6 +35,8 @@ from typing import Any
 import openpyxl
 import yaml
 from docx import Document as DocxDocument
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Data model
@@ -326,7 +329,20 @@ class TestCaseGrader:
         )
 
         if total == 0:
-            score = 3  # No numerical values to check
+            if self._expected:
+                logger.warning(
+                    "%s: zero comparisons made despite non-empty expected_outputs — "
+                    "scoring as 1 (unknown); check gold standard for type mismatches",
+                    self.test_case_id,
+                )
+                checks.append(CheckResult(
+                    name="correctness_zero_comparisons",
+                    status="fail",
+                    detail="No comparable values found despite non-empty expected_outputs",
+                ))
+                score = 1
+            else:
+                score = 3  # Genuinely no expected outputs
         elif matched == total:
             score = 3
         elif matched >= total * 0.8:
