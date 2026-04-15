@@ -298,6 +298,7 @@ def _build_dashboard(wb: Workbook, test_cases: dict) -> None:
 
     sorted_tcs = sorted(test_cases.keys(), key=lambda k: int(k.split("-")[1]))
     tc_list = [(tc_id, test_cases[tc_id]) for tc_id in sorted_tcs]
+    data_end_row = len(sorted_tcs) + 1  # row 1 is header on Scorecard
 
     # --- Section 1: By Service Line ---
     service_lines = sorted({tc.get("service_line", "") for _, tc in tc_list})
@@ -324,7 +325,7 @@ def _build_dashboard(wb: Workbook, test_cases: dict) -> None:
             # Build AVERAGEIFS referencing Scorecard
             ws.cell(
                 row=row, column=3 + d_idx,
-                value=f'=IFERROR(AVERAGEIFS(Scorecard!{sc_col}2:{sc_col}19,Scorecard!C2:C19,A{row}),"")',
+                value=f'=IFERROR(AVERAGEIFS(Scorecard!{sc_col}2:{sc_col}{data_end_row},Scorecard!C2:C{data_end_row},A{row}),"")',
             )
         # Overall avg
         ws.cell(
@@ -358,7 +359,7 @@ def _build_dashboard(wb: Workbook, test_cases: dict) -> None:
             sc_col = get_column_letter(5 + d_idx)
             ws.cell(
                 row=row, column=3 + d_idx,
-                value=f'=IFERROR(AVERAGEIFS(Scorecard!{sc_col}2:{sc_col}19,Scorecard!D2:D19,A{row}),"")',
+                value=f'=IFERROR(AVERAGEIFS(Scorecard!{sc_col}2:{sc_col}{data_end_row},Scorecard!D2:D{data_end_row},A{row}),"")',
             )
         ws.cell(
             row=row, column=8,
