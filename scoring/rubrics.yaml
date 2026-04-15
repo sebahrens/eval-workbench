@@ -766,3 +766,29 @@ test_cases:
       3: "All material findings cite primary source IDs (LCTR-NNN, AMD-NNN, EA-NNN); management Q&A statements clearly distinguished from source-verified facts; contradictions between management statements and primary sources explicitly flagged; assumptions and limitations section identifies evidence gaps; calibrated language used throughout ('appears to,' 'may indicate,' 'subject to further review')"
       2: "Most findings cite source IDs but one material finding relies on management Q&A without verification; management/source distinction present but inconsistent; some calibrated language but occasional definitive assertions"
       1: "Material findings lack source citations; management statements and verified facts not distinguished; no evidence gap disclosure; definitive legal advice language used"
+
+  TC-23:
+    title: "Swiss Multi-Currency Bank Reconciliation (CHF/EUR/USD)"
+    service_line: Audit
+    difficulty: Complex
+    capabilities: [File Reading, Data Analysis, File Writing, FX Reconciliation]
+    correctness:
+      3: "All 3 accounts reconcile to zero difference (CHF and USD) or identified difference matches ERR-CH-002 (EUR); outstanding items correctly identified (2 checks CHF 47,815 + 1 DIT CHF 18,430 + 1 SEPA EUR 28,750 + 1 wire USD 15,200); consolidated cash CHF 4,618,565; ERR-CH-002 caught with correct CHF 6,324 impact"
+      2: "2 of 3 accounts reconcile correctly; most outstanding items identified but misses 1; ERR-CH-002 detected but impact incorrectly quantified; consolidated cash within ±1% of gold"
+      1: "Reconciliations do not balance; misses ERR-CH-002 entirely; incorrect FX translation methodology; material errors in outstanding item identification"
+    completeness:
+      3: "All 6 sheets present; each reconciliation includes original currency and CHF equivalent; FX revaluation check covers both EUR and USD; confirmation tie-out includes all disclosure items (credit facility, pledges, fiduciary)"
+      2: "4-5 sheets present or all sheets present but missing FX revaluation check detail or confirmation disclosures incomplete"
+      1: "Missing 3+ sheets or no multi-currency reconciliation"
+    format_compliance:
+      3: "Valid xlsx; amounts formatted with correct currency symbols (CHF, EUR, USD); dates in DD.MM.YYYY; original-currency and CHF-equivalent columns clearly labeled; opens without errors"
+      2: "Valid xlsx but currency formatting inconsistent or dates in wrong format"
+      1: "Broken file or currencies mixed without clear denomination labels"
+    robustness:
+      3: "Handled German-language columns in all input files; correctly parsed DTA/LSV+ payment references; applied SNB rate convention correctly (inverted for CHF-per-foreign-unit); processed single Swiss bank confirmation covering all accounts"
+      2: "Handled German terms for 2 of 3 files; minor SNB rate convention confusion but self-corrected; mostly correct payment format handling"
+      1: "Failed on German-language parsing; applied SNB rates without inversion; could not parse Swiss bank confirmation format; confused DTA/LSV+ references"
+    communication:
+      3: "Explained multi-currency reconciliation approach; noted SNB rate convention and how it was applied; flagged EUR stale rate error with clear quantification; documented credit facility and confirmation disclosures; noted DTA/LSV+ as Swiss-specific payment formats"
+      2: "Adequate explanations but missing context on Swiss banking conventions or incomplete error explanation"
+      1: "No explanation of multi-currency methodology; silent on FX error; no mention of Swiss-specific payment formats"
