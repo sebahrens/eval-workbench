@@ -116,8 +116,10 @@ def collect_test_case_count(packs: list[ScenarioPack]) -> int:
 # ── Auto-register built-in packs on import ──────────────────────────
 from generator.packs import accounting_core as _ac  # noqa: E402
 from generator.packs import cascade_europe_ifrs as _eu  # noqa: E402
+from generator.packs import ch_variants as _ch  # noqa: E402
 from generator.packs import legal_hr_diligence as _lhd  # noqa: E402
 
 register_pack(_ac.PACK)
 register_pack(_lhd.PACK)
 register_pack(_eu.PACK)
+register_pack(_ch.PACK)
