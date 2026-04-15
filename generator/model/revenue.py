@@ -145,6 +145,46 @@ PRODUCT_LINES: tuple[ProductLine, ...] = (
 # This guarantees entity-level FY24 totals are exact.
 _RESIDUAL_PRODUCT_LINES = {"Advanced Composites", "Freight & Logistics"}
 
+# Default subsidiary-key → entity-code mapping.  Used to remap PRODUCT_LINES
+# when a config supplies different entity codes for the same logical entities.
+_DEFAULT_KEY_TO_CODE: dict[str, str] = {
+    "precision_components": "PC",
+    "advanced_materials": "AM",
+    "distribution_services": "DS",
+}
+
+
+def _adapt_product_lines(
+    config_subsidiaries: dict[str, object],
+) -> tuple[ProductLine, ...]:
+    """Remap PRODUCT_LINES entity codes to match config subsidiary codes.
+
+    Builds a mapping from default codes (PC/AM/DS) to config codes by
+    matching subsidiary key names.  If a config key matches a known default
+    key, its entity_code is used for the corresponding product lines.
+    """
+    code_map: dict[str, str] = {}
+    for key, sub in config_subsidiaries.items():
+        default_code = _DEFAULT_KEY_TO_CODE.get(key)
+        if default_code is not None:
+            code_map[default_code] = sub.entity_code
+
+    # If no remapping needed, return as-is
+    if all(v == k for k, v in code_map.items()):
+        return PRODUCT_LINES
+
+    return tuple(
+        ProductLine(
+            name=pl.name,
+            entity_code=code_map.get(pl.entity_code, pl.entity_code),
+            revenue_account=pl.revenue_account,
+            cogs_account=pl.cogs_account,
+            fy25_share=pl.fy25_share,
+            fy24_to_fy25_growth=pl.fy24_to_fy25_growth,
+        )
+        for pl in PRODUCT_LINES
+    )
+
 
 # ── Monthly seasonal weights ────────────────────────────────────────────────
 
@@ -205,6 +245,7 @@ def _build_annual_table(
     subsidiaries: dict[str, object] | None = None,
     entity_growth_fy24_to_fy25: dict[str, Decimal] | None = None,
     fy23_to_fy24_growth: Decimal | None = None,
+    product_lines: tuple[ProductLine, ...] | None = None,
 ) -> dict[tuple[str, int], Decimal]:
     """Build product-line annual revenue for all years.
 
@@ -218,6 +259,9 @@ def _build_annual_table(
         ``_ENTITY_GROWTH_FY24_TO_FY25``.
     fy23_to_fy24_growth : Decimal, optional
         Uniform FY23→FY24 growth.  Defaults to ``_ENTITY_GROWTH_FY23_TO_FY24``.
+    product_lines : tuple[ProductLine, ...], optional
+        Product line definitions.  Defaults to the hardcoded ``PRODUCT_LINES``.
+        Pass adapted product lines when config uses non-default entity codes.
 
     Returns {(product_line_name, year): annual_revenue}.
     """
@@ -227,12 +271,13 @@ def _build_annual_table(
         else _ENTITY_GROWTH_FY24_TO_FY25
     )
     growth_fy23_24 = fy23_to_fy24_growth if fy23_to_fy24_growth is not None else _ENTITY_GROWTH_FY23_TO_FY24
+    pls_to_use = product_lines if product_lines is not None else PRODUCT_LINES
 
     table: dict[tuple[str, int], Decimal] = {}
 
     # Group product lines by entity
     by_entity: dict[str, list[ProductLine]] = {}
-    for pl in PRODUCT_LINES:
+    for pl in pls_to_use:
         by_entity.setdefault(pl.entity_code, []).append(pl)
 
     for entity_code, pls in sorted(by_entity.items()):
@@ -321,9 +366,21 @@ def generate_monthly_revenue(
     if config is not None:
         _, subs = entities_from_config(config.company)
         fy23_24 = Decimal(str(config.company.growth_rates.fy2023_to_fy2024))
+        # Adapt product lines to use config entity codes (may differ from
+        # hardcoded PC/AM/DS).
+        adapted_pls = _adapt_product_lines(config.company.subsidiaries)
+        # Build per-entity growth rates: use calibrated rates for known
+        # default entities, fall back to config scalar for custom codes.
+        fy24_25_scalar = Decimal(str(config.company.growth_rates.fy2024_to_fy2025))
+        entity_growth = {
+            code: _ENTITY_GROWTH_FY24_TO_FY25.get(code, fy24_25_scalar)
+            for code in subs
+        }
         annual_table = _build_annual_table(
             subsidiaries=subs,
+            entity_growth_fy24_to_fy25=entity_growth,
             fy23_to_fy24_growth=fy23_24,
+            product_lines=adapted_pls,
         )
         sw = config.company.seasonal_weights
         base_weights = _quarterly_to_monthly(sw.Q1, sw.Q2, sw.Q3, sw.Q4)
@@ -332,6 +389,7 @@ def generate_monthly_revenue(
             for code, entity in subs.items()
         }
     else:
+        adapted_pls = PRODUCT_LINES
         annual_table = _ANNUAL_TABLE
         base_weights = _MONTHLY_WEIGHTS
         gross_margins = {
@@ -341,7 +399,7 @@ def generate_monthly_revenue(
 
     records: list[MonthlyRevenue] = []
 
-    for pl in PRODUCT_LINES:
+    for pl in adapted_pls:
         margin = gross_margins[pl.entity_code]
 
         for year in sorted(years):

@@ -334,6 +334,77 @@ class TestConfigSeasonalWeights:
             assert a.revenue == b.revenue
 
 
+class TestCustomEntityCodes:
+    """Config with non-default entity codes must not KeyError."""
+
+    def _make_custom_config(self) -> Config:
+        sw = SeasonalWeights(Q1=0.20, Q2=0.25, Q3=0.25, Q4=0.30)
+        return Config(
+            seed=42,
+            output_dir="test_suite",
+            company=CompanyConfig(
+                name="Cascade Industries, Inc.",
+                type="US C-Corporation",
+                industry="Mid-market manufacturer",
+                headquarters="Portland, Oregon",
+                fiscal_year_end="12-31",
+                years=[2023, 2024, 2025],
+                current_year=2025,
+                consolidated_revenue=200_000_000,
+                subsidiaries={
+                    "precision_components": SubsidiaryConfig(
+                        legal_name="Cascade Precision Components LLC",
+                        location="Portland, OR", state="OR", entity_code="PRC",
+                        revenue=95_000_000, type="Core manufacturing",
+                        gross_margin=0.35, employee_count=350,
+                    ),
+                    "advanced_materials": SubsidiaryConfig(
+                        legal_name="Cascade Advanced Materials, Inc.",
+                        location="Austin, TX", state="TX", entity_code="ADM",
+                        revenue=65_000_000, type="Specialty materials",
+                        gross_margin=0.52, employee_count=280, rd_spend_pct=0.12,
+                    ),
+                    "distribution_services": SubsidiaryConfig(
+                        legal_name="Cascade Distribution Services LLC",
+                        location="Chicago, IL", state="IL", entity_code="DST",
+                        revenue=40_000_000, type="Warehousing and logistics",
+                        gross_margin=0.18, employee_count=220,
+                    ),
+                },
+                growth_rates=GrowthRates(fy2023_to_fy2024=0.06, fy2024_to_fy2025=0.09),
+                intercompany=IntercompanyConfig(
+                    raw_materials_markup=0.08, management_fee_pct=0.015,
+                    intercompany_loan_principal=5_000_000, intercompany_loan_rate=0.05,
+                ),
+                employees=EmployeeConfig(total_count=850, annual_turnover_rate=0.08),
+                seasonal_weights=sw,
+            ),
+            canary_assignments={},
+            error_injections={},
+        )
+
+    def test_no_key_error(self) -> None:
+        """Custom entity codes (PRC/ADM/DST instead of PC/AM/DS) must not crash."""
+        cfg = self._make_custom_config()
+        records = generate_monthly_revenue(random.Random(42), config=cfg)
+        assert len(records) > 0
+
+    def test_entity_codes_in_output(self) -> None:
+        """Output records must use the config entity codes, not the hardcoded ones."""
+        cfg = self._make_custom_config()
+        records = generate_monthly_revenue(random.Random(42), config=cfg)
+        codes = {r.entity_code for r in records}
+        assert codes == {"PRC", "ADM", "DST"}
+
+    def test_annual_totals_match_targets(self) -> None:
+        """FY2025 entity totals must match config revenue targets."""
+        cfg = self._make_custom_config()
+        records = generate_monthly_revenue(random.Random(42), config=cfg)
+        for code, expected in [("PRC", 95_000_000), ("ADM", 65_000_000), ("DST", 40_000_000)]:
+            total = sum(r.revenue for r in records if r.entity_code == code and r.year == 2025)
+            assert abs(total - Decimal(expected)) < 1, f"{code} FY25: {total}"
+
+
 class TestQuarterlyToMonthly:
     """Unit tests for the _quarterly_to_monthly helper."""
 
