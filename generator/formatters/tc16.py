@@ -485,7 +485,8 @@ def _write_engagement_template(
     The template already exists as a project-level template; we copy it to the
     TC-16 input directory and embed a canary for traceability.
     """
-    src = Path("templates/engagement_letter_template.docx")
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    src = repo_root / "templates" / "engagement_letter_template.docx"
     dst = output_dir / _INPUT_DIR / "engagement_letter_template.docx"
     dst.parent.mkdir(parents=True, exist_ok=True)
 
