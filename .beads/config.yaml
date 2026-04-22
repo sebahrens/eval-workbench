@@ -53,4 +53,4 @@
 # - github.org
 # - github.repo
 
-dolt.shared-server: true
+sync.remote: "git+ssh://git@github.com/sebahrens/eval-workbench.git"
